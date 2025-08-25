@@ -69,4 +69,6 @@ from .routers import admin, diagnostic_center, studies, ai
 app.include_router(admin.router)
 app.include_router(diagnostic_center.router)
 app.include_router(studies.router)
+app.include_router(studies.router, prefix="/api")
 app.include_router(ai.router)
+app.include_router(ai.router, prefix="/api")

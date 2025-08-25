@@ -118,6 +118,10 @@ class Study(StudyBase):
     created_at: datetime
     updated_at: Optional[datetime] = None
     
+    patient_name: Optional[str] = None
+    patient_id_display: Optional[str] = None
+    dicom_files: Optional[List["DicomFile"]] = None
+    
     patient: Optional[Patient] = None
     diagnostic_center: Optional[DiagnosticCenter] = None
     uploaded_by: Optional[User] = None
@@ -174,3 +178,24 @@ class Token(BaseModel):
 class LoginRequest(BaseModel):
     username: str
     password: str
+
+class AIReport(BaseModel):
+    findings: List[str]
+    impression: str
+    confidence: float
+    pathology_scores: Optional[dict] = None
+    abnormal_findings: Optional[List[str]] = None
+    ai_model: Optional[str] = None
+    analysis_type: Optional[str] = None
+
+class AIAnalysisRequest(BaseModel):
+    study_id: int
+    modality: str
+    body_part: str
+    dicom_path: Optional[str] = None
+
+class AIAnalysisResponse(BaseModel):
+    study_id: int
+    analysis_results: AIReport
+    processing_time: float
+    timestamp: datetime

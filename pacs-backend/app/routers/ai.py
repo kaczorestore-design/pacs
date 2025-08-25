@@ -96,3 +96,63 @@ async def analyze_measurements(
         "message": "Measurements analyzed successfully",
         "analysis": analysis
     }
+
+@router.post("/analyze")
+async def analyze_study(
+    request: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Analyze study using AI for DICOM viewer"""
+    study_id = request.get("study_id")
+    modality = request.get("modality")
+    body_part = request.get("body_part")
+    
+    if not all([study_id, modality, body_part]):
+        raise HTTPException(status_code=400, detail="Missing required fields: study_id, modality, body_part")
+    
+    study = db.query(Study).filter(Study.id == study_id).first()
+    if not study:
+        raise HTTPException(status_code=404, detail="Study not found")
+    
+    has_access = False
+    if current_user.role == UserRole.ADMIN:
+        has_access = True
+    elif current_user.role == UserRole.RADIOLOGIST:
+        has_access = True
+    elif current_user.role in [UserRole.DOCTOR, UserRole.DIAGNOSTIC_CENTER_ADMIN]:
+        has_access = study.diagnostic_center_id == current_user.diagnostic_center_id
+    
+    if not has_access:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    try:
+        import time
+        from ..database import DicomFile
+        start_time = time.time()
+        
+        dicom_file = db.query(DicomFile).filter(DicomFile.study_id == study_id).first()
+        dicom_path = dicom_file.file_path if dicom_file else None
+        
+        ai_report = ai_service.generate_report(
+            modality=modality,
+            body_part=body_part,
+            study_description=study.study_description or "",
+            dicom_path=dicom_path
+        )
+        
+        processing_time = time.time() - start_time
+        
+        return {
+            "findings": ai_report.get("findings", []),
+            "impression": ai_report.get("impression", ""),
+            "confidence": ai_report.get("confidence", 0.0),
+            "pathology_scores": ai_report.get("pathology_scores", {}),
+            "abnormal_findings": ai_report.get("abnormal_findings", []),
+            "ai_model": ai_report.get("ai_model", ""),
+            "analysis_type": ai_report.get("analysis_type", ""),
+            "processing_time": processing_time
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"AI analysis failed: {str(e)}")

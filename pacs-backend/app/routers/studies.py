@@ -161,6 +161,14 @@ async def get_study(
     if not has_access:
         raise HTTPException(status_code=403, detail="Access denied")
     
+    patient = db.query(Patient).filter(Patient.id == study.patient_id).first()
+    if patient:
+        study.patient_name = f"{patient.first_name} {patient.last_name}"
+        study.patient_id_display = patient.patient_id
+    
+    dicom_files = db.query(DicomFile).filter(DicomFile.study_id == study.id).all()
+    study.dicom_files = dicom_files
+    
     return study
 
 @router.put("/{study_id}/assign")
