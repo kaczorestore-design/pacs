@@ -32,6 +32,8 @@ prometheus-client = "^0.22.1"
 psycopg2-binary = "^2.9.10"
 redis = "^6.4.0"
 celery = "^5.5.3"
+reportlab = "^4.4.3"
+websockets = "^15.0.1"
 
 
 [build-system]

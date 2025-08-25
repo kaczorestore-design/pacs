@@ -459,8 +459,27 @@ async def get_deletion_requests(
     if current_user.role != UserRole.ADMIN:
         raise HTTPException(status_code=403, detail="Only admins can view deletion requests")
     
-    requests = db.query(DeletionRequest).all()
-    return requests
+    try:
+        requests = db.query(DeletionRequest).all()
+        if not requests:
+            return []
+        
+        result = []
+        for req in requests:
+            result.append({
+                "id": req.id,
+                "study_id": req.study_id,
+                "reason": req.reason,
+                "requested_by_id": req.requested_by_id,
+                "status": req.status,
+                "approved_by_id": req.approved_by_id,
+                "approved_at": req.approved_at.isoformat() if req.approved_at else None,
+                "created_at": req.created_at.isoformat() if req.created_at else None
+            })
+        return result
+    except Exception as e:
+        print(f"Error fetching deletion requests: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch deletion requests")
 
 @router.put("/deletion-requests/{request_id}/approve")
 async def approve_deletion_request(
