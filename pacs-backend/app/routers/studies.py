@@ -11,6 +11,7 @@ from datetime import datetime
 from ..database import get_db, User, Study, Patient, DicomFile, UserRole, StudyStatus, DeletionRequest, DiagnosticCenter
 from ..auth import get_current_user
 from .. import schemas
+from ..upload_config import validate_upload_file, validate_batch_upload, MAX_UPLOAD_SIZE
 
 router = APIRouter(prefix="/studies", tags=["studies"])
 
@@ -35,6 +36,14 @@ async def upload_study(
 ):
     if current_user.role not in [UserRole.TECHNICIAN, UserRole.DOCTOR]:
         raise HTTPException(status_code=403, detail="Only technicians and doctors can upload studies")
+    
+    try:
+        validate_batch_upload(files, max_total_size=MAX_UPLOAD_SIZE)
+        for file in files:
+            if hasattr(file, 'size'):
+                validate_upload_file(file)
+    except ValueError as e:
+        raise HTTPException(status_code=413, detail=str(e))
     
     extracted_metadata = {}
     if files and files[0].filename and files[0].filename.lower().endswith('.dcm'):

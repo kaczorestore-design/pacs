@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File, Form
+from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File, Form, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
@@ -24,7 +24,11 @@ from .dicom_service import DicomNodeConnector
 
 Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="PACS System API", version="1.0.0")
+app = FastAPI(
+    title="PACS System API", 
+    version="1.0.0",
+    max_request_size=10 * 1024 * 1024 * 1024  # 10GB
+)
 
 # Disable CORS. Do not remove this for full-stack development.
 app.add_middleware(
@@ -34,6 +38,17 @@ app.add_middleware(
     allow_methods=["*"],  # Allows all methods
     allow_headers=["*"],  # Allows all headers
 )
+
+from starlette.middleware.base import BaseHTTPMiddleware
+
+class LargeUploadMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        if request.url.path.startswith("/studies/upload") or request.url.path.startswith("/api/studies/upload"):
+            request.scope["client_max_body_size"] = 10 * 1024 * 1024 * 1024  # 10GB
+        response = await call_next(request)
+        return response
+
+app.add_middleware(LargeUploadMiddleware)
 
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)

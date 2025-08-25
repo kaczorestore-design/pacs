@@ -31,6 +31,7 @@ services:
       - DATABASE_URL=postgresql://pacs_user:pacs_password@postgres:5432/pacs_db
       - REDIS_URL=redis://redis:6379
       - SECRET_KEY=your-secret-key-here
+      - MAX_UPLOAD_SIZE=10737418240  # 10GB in bytes
     volumes:
       - dicom_storage:/app/uploads
     ports:
@@ -40,6 +41,13 @@ services:
       - redis
     networks:
       - pacs-network
+    # Increase memory limits for large file processing
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 2G
 
   pacs-frontend:
     build:
