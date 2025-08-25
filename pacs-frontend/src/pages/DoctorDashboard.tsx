@@ -73,21 +73,33 @@ export default function DoctorDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-medical-gray-50">
-      {/* Header */}
-      <div className="bg-white shadow-sm border-b border-medical-gray-200">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+      {/* Enhanced Header */}
+      <div className="bg-white shadow-lg border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-6">
-            <div>
-              <h1 className="text-2xl font-bold text-medical-gray-900">Doctor Dashboard</h1>
-              <p className="text-medical-gray-600">Welcome back, Dr. {user?.full_name}</p>
+          <div className="flex justify-between items-center py-8">
+            <div className="space-y-1">
+              <h1 className="text-3xl font-bold text-gray-900">Doctor Dashboard</h1>
+              <p className="text-lg text-gray-600">Welcome back, Dr. {user?.full_name}</p>
+              <div className="flex items-center space-x-4 text-sm text-gray-500">
+                <div className="flex items-center space-x-2">
+                  <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                  <span>{stats.assignedStudies} studies assigned</span>
+                </div>
+                <span>•</span>
+                <div className="flex items-center space-x-2">
+                  <div className="w-2 h-2 bg-yellow-500 rounded-full animate-pulse"></div>
+                  <span>{stats.pendingReports} reports pending</span>
+                </div>
+              </div>
             </div>
-            <div className="flex space-x-4">
-              <Button variant="outline">
+            <div className="flex space-x-3">
+              <Button variant="outline" className="shadow-sm hover:shadow-md transition-shadow border-blue-500 text-blue-600 hover:bg-blue-50">
                 <Brain className="h-4 w-4 mr-2" />
                 AI Reports
               </Button>
-              <Button variant="outline" onClick={() => { logout(); window.location.href = '/login'; }}>
+              <Button variant="outline" onClick={() => { logout(); window.location.href = '/login'; }}
+                      className="shadow-sm hover:shadow-md transition-shadow">
                 <LogOut className="h-4 w-4 mr-2" />
                 Logout
               </Button>
@@ -96,9 +108,9 @@ export default function DoctorDashboard() {
         </div>
       </div>
 
-      {/* Navigation Tabs */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        <div className="flex space-x-8 border-b border-medical-gray-200 mb-6">
+      {/* Enhanced Navigation Tabs */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="flex space-x-1 bg-gray-100 p-1 rounded-xl mb-8">
           {[
             { id: 'overview', label: 'Overview', icon: Activity },
             { id: 'assigned', label: 'Assigned Studies', icon: Clock },
@@ -107,10 +119,10 @@ export default function DoctorDashboard() {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center px-1 py-4 border-b-2 font-medium text-sm ${
+              className={`flex items-center px-6 py-3 rounded-lg font-medium text-sm transition-all duration-200 ${
                 activeTab === tab.id
-                  ? 'border-medical-primary text-medical-primary'
-                  : 'border-transparent text-medical-gray-500 hover:text-medical-gray-700 hover:border-medical-gray-300'
+                  ? 'bg-white text-blue-600 shadow-sm border border-gray-200'
+                  : 'text-gray-600 hover:text-gray-900 hover:bg-white/50'
               }`}
             >
               <tab.icon className="h-5 w-5 mr-2" />
@@ -123,53 +135,61 @@ export default function DoctorDashboard() {
         {activeTab === 'overview' && (
           <div className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Total Studies</CardTitle>
-                  <FileText className="h-4 w-4 text-muted-foreground" />
+              <Card className="medical-card hover:scale-105 transition-transform duration-200">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+                  <CardTitle className="text-sm font-semibold text-gray-700">Total Studies</CardTitle>
+                  <div className="p-2 bg-blue-100 rounded-lg">
+                    <FileText className="h-5 w-5 text-blue-600" />
+                  </div>
                 </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{stats.totalStudies}</div>
-                  <p className="text-xs text-muted-foreground">
+                <CardContent className="space-y-2">
+                  <div className="text-3xl font-bold text-gray-900">{stats.totalStudies}</div>
+                  <p className="text-sm text-gray-600">
                     All accessible
                   </p>
                 </CardContent>
               </Card>
 
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Assigned</CardTitle>
-                  <Clock className="h-4 w-4 text-muted-foreground" />
+              <Card className="medical-card hover:scale-105 transition-transform duration-200">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+                  <CardTitle className="text-sm font-semibold text-gray-700">Assigned</CardTitle>
+                  <div className="p-2 bg-yellow-100 rounded-lg">
+                    <Clock className="h-5 w-5 text-yellow-600" />
+                  </div>
                 </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{stats.assignedStudies}</div>
-                  <p className="text-xs text-muted-foreground">
+                <CardContent className="space-y-2">
+                  <div className="text-3xl font-bold text-gray-900">{stats.assignedStudies}</div>
+                  <p className="text-sm text-gray-600">
                     Awaiting review
                   </p>
                 </CardContent>
               </Card>
 
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Completed</CardTitle>
-                  <Activity className="h-4 w-4 text-muted-foreground" />
+              <Card className="medical-card hover:scale-105 transition-transform duration-200">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+                  <CardTitle className="text-sm font-semibold text-gray-700">Completed</CardTitle>
+                  <div className="p-2 bg-green-100 rounded-lg">
+                    <Activity className="h-5 w-5 text-green-600" />
+                  </div>
                 </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{stats.completedReports}</div>
-                  <p className="text-xs text-muted-foreground">
+                <CardContent className="space-y-2">
+                  <div className="text-3xl font-bold text-gray-900">{stats.completedReports}</div>
+                  <p className="text-sm text-gray-600">
                     Reports written
                   </p>
                 </CardContent>
               </Card>
 
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Pending</CardTitle>
-                  <Clock className="h-4 w-4 text-muted-foreground" />
+              <Card className="medical-card hover:scale-105 transition-transform duration-200">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+                  <CardTitle className="text-sm font-semibold text-gray-700">Pending</CardTitle>
+                  <div className="p-2 bg-orange-100 rounded-lg">
+                    <Clock className="h-5 w-5 text-orange-600" />
+                  </div>
                 </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{stats.pendingReports}</div>
-                  <p className="text-xs text-muted-foreground">
+                <CardContent className="space-y-2">
+                  <div className="text-3xl font-bold text-gray-900">{stats.pendingReports}</div>
+                  <p className="text-sm text-gray-600">
                     Need reports
                   </p>
                 </CardContent>

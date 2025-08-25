@@ -81,21 +81,26 @@ export default function AdminDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-medical-gray-50">
-      {/* Header */}
-      <div className="bg-white shadow-sm border-b border-medical-gray-200">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+      {/* Enhanced Header */}
+      <div className="bg-white shadow-lg border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-6">
-            <div>
-              <h1 className="text-2xl font-bold text-medical-gray-900">Admin Dashboard</h1>
-              <p className="text-medical-gray-600">Welcome back, {user?.full_name}</p>
+          <div className="flex justify-between items-center py-8">
+            <div className="space-y-1">
+              <h1 className="text-3xl font-bold text-gray-900">Admin Dashboard</h1>
+              <p className="text-lg text-gray-600">Welcome back, {user?.full_name}</p>
+              <div className="flex items-center space-x-2 text-sm text-gray-500">
+                <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                <span>System Status: Operational</span>
+              </div>
             </div>
-            <div className="flex space-x-4">
-              <Button variant="outline">
+            <div className="flex space-x-3">
+              <Button variant="outline" className="shadow-sm hover:shadow-md transition-shadow">
                 <Settings className="h-4 w-4 mr-2" />
                 Settings
               </Button>
-              <Button variant="outline" onClick={() => { logout(); window.location.href = '/login'; }}>
+              <Button variant="outline" onClick={() => { logout(); window.location.href = '/login'; }} 
+                      className="shadow-sm hover:shadow-md transition-shadow">
                 <LogOut className="h-4 w-4 mr-2" />
                 Logout
               </Button>
@@ -104,9 +109,9 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* Navigation Tabs */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        <div className="flex space-x-8 border-b border-medical-gray-200 mb-6">
+      {/* Enhanced Navigation Tabs */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="flex space-x-1 bg-gray-100 p-1 rounded-xl mb-8">
           {[
             { id: 'overview', label: 'Overview', icon: Activity },
             { id: 'centers', label: 'Diagnostic Centers', icon: Building2 },
@@ -115,10 +120,10 @@ export default function AdminDashboard() {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center px-1 py-4 border-b-2 font-medium text-sm ${
+              className={`flex items-center px-6 py-3 rounded-lg font-medium text-sm transition-all duration-200 ${
                 activeTab === tab.id
-                  ? 'border-medical-primary text-medical-primary'
-                  : 'border-transparent text-medical-gray-500 hover:text-medical-gray-700 hover:border-medical-gray-300'
+                  ? 'bg-white text-blue-600 shadow-sm border border-gray-200'
+                  : 'text-gray-600 hover:text-gray-900 hover:bg-white/50'
               }`}
             >
               <tab.icon className="h-5 w-5 mr-2" />
@@ -131,53 +136,63 @@ export default function AdminDashboard() {
         {activeTab === 'overview' && (
           <div className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Total Centers</CardTitle>
-                  <Building2 className="h-4 w-4 text-muted-foreground" />
+              <Card className="medical-card hover:scale-105 transition-transform duration-200">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+                  <CardTitle className="text-sm font-semibold text-gray-700">Total Centers</CardTitle>
+                  <div className="p-2 bg-blue-100 rounded-lg">
+                    <Building2 className="h-5 w-5 text-blue-600" />
+                  </div>
                 </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{stats.totalCenters}</div>
-                  <p className="text-xs text-muted-foreground">
+                <CardContent className="space-y-2">
+                  <div className="text-3xl font-bold text-gray-900">{stats.totalCenters}</div>
+                  <p className="text-sm text-gray-600 flex items-center">
+                    <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
                     {stats.activeCenters} active
                   </p>
                 </CardContent>
               </Card>
 
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Total Users</CardTitle>
-                  <Users className="h-4 w-4 text-muted-foreground" />
+              <Card className="medical-card hover:scale-105 transition-transform duration-200">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+                  <CardTitle className="text-sm font-semibold text-gray-700">Total Users</CardTitle>
+                  <div className="p-2 bg-indigo-100 rounded-lg">
+                    <Users className="h-5 w-5 text-indigo-600" />
+                  </div>
                 </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{stats.totalUsers}</div>
-                  <p className="text-xs text-muted-foreground">
+                <CardContent className="space-y-2">
+                  <div className="text-3xl font-bold text-gray-900">{stats.totalUsers}</div>
+                  <p className="text-sm text-gray-600 flex items-center">
+                    <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
                     {stats.activeUsers} active
                   </p>
                 </CardContent>
               </Card>
 
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Radiologists</CardTitle>
-                  <Users className="h-4 w-4 text-muted-foreground" />
+              <Card className="medical-card hover:scale-105 transition-transform duration-200">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+                  <CardTitle className="text-sm font-semibold text-gray-700">Radiologists</CardTitle>
+                  <div className="p-2 bg-cyan-100 rounded-lg">
+                    <Users className="h-5 w-5 text-cyan-600" />
+                  </div>
                 </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{stats.radiologists}</div>
-                  <p className="text-xs text-muted-foreground">
+                <CardContent className="space-y-2">
+                  <div className="text-3xl font-bold text-gray-900">{stats.radiologists}</div>
+                  <p className="text-sm text-gray-600">
                     Available for reports
                   </p>
                 </CardContent>
               </Card>
 
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Doctors</CardTitle>
-                  <Users className="h-4 w-4 text-muted-foreground" />
+              <Card className="medical-card hover:scale-105 transition-transform duration-200">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+                  <CardTitle className="text-sm font-semibold text-gray-700">Doctors</CardTitle>
+                  <div className="p-2 bg-green-100 rounded-lg">
+                    <Users className="h-5 w-5 text-green-600" />
+                  </div>
                 </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{stats.doctors}</div>
-                  <p className="text-xs text-muted-foreground">
+                <CardContent className="space-y-2">
+                  <div className="text-3xl font-bold text-gray-900">{stats.doctors}</div>
+                  <p className="text-sm text-gray-600">
                     Across all centers
                   </p>
                 </CardContent>
@@ -251,71 +266,64 @@ export default function AdminDashboard() {
               </Button>
             </div>
 
-            <div className="bg-white rounded-lg shadow">
-              <div className="p-6 border-b">
-                <div className="flex items-center space-x-4">
-                  <div className="relative flex-1">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-                    <Input
-                      placeholder="Search centers..."
-                      className="pl-10"
-                    />
+            <div className="medical-card overflow-hidden">
+              <div className="p-6 border-b border-gray-200 bg-gray-50">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-semibold text-gray-900">Diagnostic Centers</h3>
+                  <div className="flex items-center space-x-4">
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                      <Input
+                        placeholder="Search centers..."
+                        className="pl-10 w-64 border-gray-300 focus:border-blue-500"
+                      />
+                    </div>
                   </div>
                 </div>
               </div>
 
               <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-medical-gray-50">
+                <table className="medical-table">
+                  <thead>
                     <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-medical-gray-500 uppercase tracking-wider">
-                        Name
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-medical-gray-500 uppercase tracking-wider">
-                        Contact
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-medical-gray-500 uppercase tracking-wider">
-                        Status
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-medical-gray-500 uppercase tracking-wider">
-                        Created
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-medical-gray-500 uppercase tracking-wider">
-                        Actions
-                      </th>
+                      <th>Name</th>
+                      <th>Contact</th>
+                      <th>Status</th>
+                      <th>Created</th>
+                      <th>Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
+                  <tbody>
                     {centers.map((center) => (
                       <tr key={center.id}>
-                        <td className="px-6 py-4 whitespace-nowrap">
+                        <td>
                           <div>
-                            <div className="text-sm font-medium text-medical-gray-900">
+                            <div className="font-semibold text-gray-900">
                               {center.name}
                             </div>
-                            <div className="text-sm text-medical-gray-500">
+                            <div className="text-sm text-gray-500">
                               {center.address}
                             </div>
                           </div>
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm text-medical-gray-900">{center.email}</div>
-                          <div className="text-sm text-medical-gray-500">{center.phone}</div>
+                        <td>
+                          <div className="text-gray-900">{center.email}</div>
+                          <div className="text-sm text-gray-500">{center.phone}</div>
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                        <td>
+                          <span className={`status-badge ${
                             center.is_active
-                              ? 'bg-medical-success/10 text-medical-success'
-                              : 'bg-medical-error/10 text-medical-error'
+                              ? 'bg-green-100 text-green-700 border border-green-200'
+                              : 'bg-red-100 text-red-700 border border-red-200'
                           }`}>
                             {center.is_active ? 'Active' : 'Inactive'}
                           </span>
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-medical-gray-500">
+                        <td className="text-gray-500">
                           {new Date(center.created_at).toLocaleDateString()}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                          <Button variant="outline" size="sm">
+                        <td>
+                          <Button variant="outline" size="sm" className="hover:bg-blue-50 hover:border-blue-500">
                             Edit
                           </Button>
                         </td>
