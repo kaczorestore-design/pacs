@@ -19,6 +19,8 @@ from .database import (
     User, DiagnosticCenter, Patient, Study, DicomFile, Annotation,
     UserRole, StudyStatus
 )
+from .monitoring import get_metrics
+from .dicom_service import DicomNodeConnector
 
 Base.metadata.create_all(bind=engine)
 
@@ -64,11 +66,25 @@ async def login(login_data: schemas.LoginRequest, db: Session = Depends(get_db))
 async def get_current_user_info(current_user: User = Depends(get_current_user)):
     return current_user
 
-from .routers import admin, diagnostic_center, studies, ai
+@app.get("/metrics")
+async def metrics():
+    return get_metrics()
+
+try:
+    dicom_service = DicomNodeConnector()
+    dicom_service.start_scp_server()
+    print("✅ DICOM SCP server started successfully")
+except Exception as e:
+    print(f"⚠️ DICOM service initialization failed: {e}")
+
+from .routers import admin, diagnostic_center, studies, ai, mfa, audit
 
 app.include_router(admin.router)
 app.include_router(diagnostic_center.router)
 app.include_router(studies.router)
+app.include_router(ai.router)
+app.include_router(mfa.router)
+app.include_router(audit.router)
 app.include_router(studies.router, prefix="/api")
 app.include_router(ai.router)
 app.include_router(ai.router, prefix="/api")

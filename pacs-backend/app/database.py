@@ -39,6 +39,12 @@ class User(Base):
     role = Column(Enum(UserRole), nullable=False)
     is_active = Column(Boolean, default=True)
     diagnostic_center_id = Column(Integer, ForeignKey("diagnostic_centers.id"), nullable=True)
+    mfa_enabled = Column(Boolean, default=False)
+    mfa_secret = Column(String, nullable=True)
+    mfa_backup_codes = Column(Text, nullable=True)
+    last_login = Column(DateTime(timezone=True), nullable=True)
+    failed_login_attempts = Column(Integer, default=0)
+    locked_until = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
@@ -145,6 +151,21 @@ class Annotation(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
     study = relationship("Study", back_populates="annotations")
+    user = relationship("User")
+
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    action = Column(String, nullable=False)
+    resource_type = Column(String, nullable=True)
+    resource_id = Column(String, nullable=True)
+    ip_address = Column(String, nullable=True)
+    user_agent = Column(String, nullable=True)
+    details = Column(Text, nullable=True)
+    timestamp = Column(DateTime(timezone=True), server_default=func.now())
+    
     user = relationship("User")
 
 def get_db():

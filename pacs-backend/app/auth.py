@@ -1,10 +1,16 @@
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Optional, Tuple
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
+import pyotp
+import qrcode
+import io
+import base64
+import secrets
+import json
 from .database import get_db, User, UserRole
 
 SECRET_KEY = "your-secret-key-here-change-in-production"
@@ -82,3 +88,32 @@ def require_diagnostic_center_admin(current_user: User = Depends(get_current_use
             detail="Diagnostic center admin access required"
         )
     return current_user
+
+def generate_mfa_secret() -> str:
+    """Generate a new MFA secret for TOTP"""
+    return pyotp.random_base32()
+
+def generate_qr_code(user_email: str, secret: str) -> str:
+    """Generate QR code for MFA setup"""
+    totp_uri = pyotp.totp.TOTP(secret).provisioning_uri(
+        name=user_email,
+        issuer_name="PACS System"
+    )
+    qr = qrcode.QRCode(version=1, box_size=10, border=5)
+    qr.add_data(totp_uri)
+    qr.make(fit=True)
+    
+    img = qr.make_image(fill_color="black", back_color="white")
+    buffer = io.BytesIO()
+    img.save(buffer, format='PNG')
+    buffer.seek(0)
+    return base64.b64encode(buffer.getvalue()).decode()
+
+def verify_mfa_token(secret: str, token: str) -> bool:
+    """Verify MFA token"""
+    totp = pyotp.TOTP(secret)
+    return totp.verify(token, valid_window=1)
+
+def generate_backup_codes() -> list[str]:
+    """Generate backup codes for MFA"""
+    return [secrets.token_hex(4).upper() for _ in range(10)]
