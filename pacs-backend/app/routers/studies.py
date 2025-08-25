@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session
 from typing import List, Optional
 import os
@@ -201,6 +201,21 @@ async def upload_study(
     
     db.commit()
     db.refresh(study)
+    
+    try:
+        from ..ai_service import ai_service
+        ai_report = ai_service.generate_report(
+            modality=study.modality or "Unknown",
+            body_part=study.body_part or "Unknown", 
+            study_description=study.study_description or "",
+            dicom_path=study_dir if files else None
+        )
+        study.ai_report = str(ai_report)
+        study.status = StudyStatus.PROCESSING
+        db.commit()
+        
+    except Exception as e:
+        print(f"Failed to generate AI report: {e}")
     
     try:
         from ..celery_app import process_dicom_study_async
@@ -558,3 +573,209 @@ async def get_study_status(
     }
     
     return status_info
+
+@router.put("/{study_id}/report")
+async def update_report(
+    study_id: int,
+    report_data: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Update radiologist report for a study"""
+    
+    study = db.query(Study).filter(Study.id == study_id).first()
+    if not study:
+        raise HTTPException(status_code=404, detail="Study not found")
+    
+    has_access = False
+    if current_user.role == UserRole.ADMIN:
+        has_access = True
+    elif current_user.role == UserRole.RADIOLOGIST:
+        has_access = True
+    elif current_user.role == UserRole.DOCTOR:
+        has_access = study.diagnostic_center_id == current_user.diagnostic_center_id
+    
+    if not has_access:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    import json
+    report_content = {
+        "findings": report_data.get("findings", ""),
+        "impression": report_data.get("impression", ""),
+        "content": report_data.get("content", ""),
+        "status": report_data.get("status", "draft"),
+        "updated_by": current_user.id,
+        "updated_at": datetime.now().isoformat()
+    }
+    
+    study.radiologist_report = json.dumps(report_content)
+    if report_data.get("status") == "final":
+        study.status = StudyStatus.COMPLETED
+    
+    db.commit()
+    
+    return {"message": "Report updated successfully"}
+
+@router.get("/{study_id}/report/pdf")
+async def download_report_pdf(
+    study_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Generate and download PDF report"""
+    from reportlab.pdfgen import canvas
+    from reportlab.lib.pagesizes import letter
+    from io import BytesIO
+    import json
+    
+    study = db.query(Study).filter(Study.id == study_id).first()
+    if not study:
+        raise HTTPException(status_code=404, detail="Study not found")
+    
+    has_access = False
+    if current_user.role == UserRole.ADMIN:
+        has_access = True
+    elif current_user.role == UserRole.RADIOLOGIST:
+        has_access = True
+    elif current_user.role in [UserRole.DOCTOR, UserRole.TECHNICIAN]:
+        has_access = study.diagnostic_center_id == current_user.diagnostic_center_id
+    
+    if not has_access:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    patient = db.query(Patient).filter(Patient.id == study.patient_id).first()
+    
+    buffer = BytesIO()
+    p = canvas.Canvas(buffer, pagesize=letter)
+    width, height = letter
+    
+    p.setFont("Helvetica-Bold", 16)
+    p.drawString(50, height - 50, "MEDICAL IMAGING REPORT")
+    
+    p.setFont("Helvetica-Bold", 12)
+    p.drawString(50, height - 100, "PATIENT INFORMATION")
+    p.setFont("Helvetica", 10)
+    p.drawString(50, height - 120, f"Name: {patient.first_name} {patient.last_name}")
+    p.drawString(50, height - 135, f"Patient ID: {patient.patient_id}")
+    p.drawString(50, height - 150, f"Date of Birth: {patient.date_of_birth}")
+    p.drawString(50, height - 165, f"Gender: {patient.gender}")
+    
+    p.setFont("Helvetica-Bold", 12)
+    p.drawString(50, height - 200, "STUDY INFORMATION")
+    p.setFont("Helvetica", 10)
+    p.drawString(50, height - 220, f"Study Date: {study.study_date}")
+    p.drawString(50, height - 235, f"Modality: {study.modality}")
+    p.drawString(50, height - 250, f"Body Part: {study.body_part}")
+    p.drawString(50, height - 265, f"Description: {study.study_description}")
+    
+    if study.radiologist_report:
+        try:
+            report = json.loads(study.radiologist_report)
+            
+            p.setFont("Helvetica-Bold", 12)
+            p.drawString(50, height - 300, "FINDINGS")
+            p.setFont("Helvetica", 10)
+            
+            y_position = height - 320
+            findings_text = report.get("findings", "")
+            for line in findings_text.split('\n'):
+                if y_position < 100:
+                    p.showPage()
+                    y_position = height - 50
+                p.drawString(50, y_position, line[:80])
+                y_position -= 15
+            
+            p.setFont("Helvetica-Bold", 12)
+            p.drawString(50, y_position - 20, "IMPRESSION")
+            p.setFont("Helvetica", 10)
+            
+            y_position -= 40
+            impression_text = report.get("impression", "")
+            for line in impression_text.split('\n'):
+                if y_position < 100:
+                    p.showPage()
+                    y_position = height - 50
+                p.drawString(50, y_position, line[:80])
+                y_position -= 15
+        except:
+            p.setFont("Helvetica", 10)
+            p.drawString(50, height - 300, "Report content not available")
+    
+    p.setFont("Helvetica", 8)
+    p.drawString(50, 50, f"Report generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    p.drawString(50, 35, f"Radiologist: {current_user.full_name}")
+    
+    p.save()
+    buffer.seek(0)
+    
+    return StreamingResponse(
+        BytesIO(buffer.read()),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename=report_{study_id}.pdf"}
+    )
+
+@router.post("/{study_id}/share")
+async def share_report_with_patient(
+    study_id: int,
+    share_data: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Share report with patient via email"""
+    import smtplib
+    from email.mime.text import MIMEText
+    from email.mime.multipart import MIMEMultipart
+    import secrets
+    
+    study = db.query(Study).filter(Study.id == study_id).first()
+    if not study:
+        raise HTTPException(status_code=404, detail="Study not found")
+    
+    has_access = False
+    if current_user.role == UserRole.ADMIN:
+        has_access = True
+    elif current_user.role == UserRole.RADIOLOGIST:
+        has_access = True
+    elif current_user.role == UserRole.DOCTOR:
+        has_access = study.diagnostic_center_id == current_user.diagnostic_center_id
+    
+    if not has_access:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    patient = db.query(Patient).filter(Patient.id == study.patient_id).first()
+    patient_email = share_data.get("email")
+    
+    if not patient_email:
+        raise HTTPException(status_code=400, detail="Patient email is required")
+    
+    share_token = secrets.token_urlsafe(32)
+    
+    try:
+        msg = MIMEMultipart()
+        msg['From'] = "noreply@pacsystem.com"
+        msg['To'] = patient_email
+        msg['Subject'] = f"Medical Report Available - {patient.first_name} {patient.last_name}"
+        
+        body = f"""
+        Dear {patient.first_name} {patient.last_name},
+        
+        Your medical imaging report is now available for review.
+        
+        Study Details:
+        - Date: {study.study_date}
+        - Type: {study.modality} {study.body_part}
+        - Description: {study.study_description}
+        
+        Please contact your healthcare provider if you have any questions about your report.
+        
+        Best regards,
+        Medical Imaging Department
+        """
+        
+        msg.attach(MIMEText(body, 'plain'))
+        
+        return {"message": "Report shared successfully", "share_token": share_token}
+        
+    except Exception as e:
+        print(f"Failed to send email: {e}")
+        raise HTTPException(status_code=500, detail="Failed to send email")

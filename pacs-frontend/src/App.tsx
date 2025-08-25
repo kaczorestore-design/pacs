@@ -6,6 +6,7 @@ import DiagnosticCenterDashboard from './pages/DiagnosticCenterDashboard'
 import TechnicianDashboard from './pages/TechnicianDashboard'
 import DoctorDashboard from './pages/DoctorDashboard'
 import RadiologistDashboard from './pages/RadiologistDashboard'
+import ReportEditor from './pages/ReportEditor'
 import DicomViewer from './components/DicomViewer'
 import './App.css'
 
@@ -79,6 +80,12 @@ function AppRoutes() {
       <Route path="/viewer/:studyId" element={
         <ProtectedRoute>
           <DicomViewer />
+        </ProtectedRoute>
+      } />
+      
+      <Route path="/report/:studyId" element={
+        <ProtectedRoute allowedRoles={['radiologist', 'doctor']}>
+          <ReportEditor />
         </ProtectedRoute>
       } />
       

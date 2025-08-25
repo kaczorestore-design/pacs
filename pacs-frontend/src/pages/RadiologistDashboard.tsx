@@ -496,7 +496,7 @@ export default function RadiologistDashboard() {
                       <div className="flex justify-between items-center">
                         <div className="text-sm text-gray-600">
                           <p>Generated: {new Date(study.created_at).toLocaleDateString()}</p>
-                          <p>Center: {study.center_name || study.diagnostic_center?.name}</p>
+                          <p>Center: {study.diagnostic_center?.name || 'Unknown'}</p>
                         </div>
                         <div className="flex space-x-2">
                           <Button size="sm" variant="outline" onClick={() => navigate(`/viewer/${study.id}`)}>
