@@ -3,7 +3,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
-import { Users, Building2, Activity, Settings, Plus, Search } from 'lucide-react'
+import { Users, Building2, Activity, Settings, Plus, Search, LogOut } from 'lucide-react'
 
 interface DiagnosticCenter {
   id: number
@@ -27,7 +27,7 @@ interface User {
 }
 
 export default function AdminDashboard() {
-  const { user, token } = useAuth()
+  const { user, token, logout } = useAuth()
   const [centers, setCenters] = useState<DiagnosticCenter[]>([])
   const [users, setUsers] = useState<User[]>([])
   const [loading, setLoading] = useState(true)
@@ -94,6 +94,10 @@ export default function AdminDashboard() {
               <Button variant="outline">
                 <Settings className="h-4 w-4 mr-2" />
                 Settings
+              </Button>
+              <Button variant="outline" onClick={() => { logout(); window.location.href = '/login'; }}>
+                <LogOut className="h-4 w-4 mr-2" />
+                Logout
               </Button>
             </div>
           </div>

@@ -3,7 +3,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
-import { FileText, Activity, Eye, Edit, Search, Brain, Clock } from 'lucide-react'
+import { FileText, Activity, Eye, Edit, Search, Brain, Clock, LogOut } from 'lucide-react'
 
 interface Study {
   id: number
@@ -25,7 +25,7 @@ interface Study {
 }
 
 export default function DoctorDashboard() {
-  const { user, token } = useAuth()
+  const { user, token, logout } = useAuth()
   const [studies, setStudies] = useState<Study[]>([])
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('overview')
@@ -84,6 +84,10 @@ export default function DoctorDashboard() {
               <Button variant="outline">
                 <Brain className="h-4 w-4 mr-2" />
                 AI Reports
+              </Button>
+              <Button variant="outline" onClick={() => { logout(); window.location.href = '/login'; }}>
+                <LogOut className="h-4 w-4 mr-2" />
+                Logout
               </Button>
             </div>
           </div>
