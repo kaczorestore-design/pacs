@@ -52,7 +52,7 @@ export default function RadiologistDashboard() {
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('overview')
 
-  const API_URL = 'http://localhost:8000'
+  const API_URL = 'http://127.0.0.1:8000'
 
   useEffect(() => {
     fetchStudies()
@@ -434,7 +434,7 @@ export default function RadiologistDashboard() {
                     <div className="flex justify-between items-center">
                       <div className="text-sm text-gray-600">
                         <p>Study Date: {new Date(study.study_date).toLocaleDateString()}</p>
-                        <p>Center: {study.diagnostic_center.name}</p>
+                        <p>Center: {(study as any).center_name || study.diagnostic_center?.name}</p>
                         {study.uploaded_by && (
                           <p>Technician: {study.uploaded_by.full_name}</p>
                         )}
@@ -496,7 +496,7 @@ export default function RadiologistDashboard() {
                       <div className="flex justify-between items-center">
                         <div className="text-sm text-gray-600">
                           <p>Generated: {new Date(study.created_at).toLocaleDateString()}</p>
-                          <p>Center: {study.diagnostic_center.name}</p>
+                          <p>Center: {study.center_name || study.diagnostic_center?.name}</p>
                         </div>
                         <div className="flex space-x-2">
                           <Button size="sm" variant="outline" onClick={() => navigate(`/viewer/${study.id}`)}>
@@ -504,7 +504,7 @@ export default function RadiologistDashboard() {
                             Review Images
                           </Button>
                           <Button size="sm" onClick={() => navigate(`/report/${study.id}`)}>
-                            <Edit className="h-4 w-4 mr-1" />
+                            <FileText className="h-4 w-4 mr-1" />
                             Verify & Edit
                           </Button>
                         </div>

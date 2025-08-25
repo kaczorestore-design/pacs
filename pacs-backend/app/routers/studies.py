@@ -55,7 +55,7 @@ async def upload_study(
             with open(temp_path, "wb") as temp_file:
                 temp_file.write(temp_content)
             
-            ds = pydicom.dcmread(temp_path)
+            ds = pydicom.dcmread(temp_path, force=True)
             
             extracted_metadata = {
                 "patient_name": str(ds.get('PatientName', '')).replace('^', ' ').strip(),
@@ -157,7 +157,7 @@ async def upload_study(
                 shutil.copyfileobj(file.file, buffer)
             
             try:
-                ds = pydicom.dcmread(file_path)
+                ds = pydicom.dcmread(file_path, force=True)
                 
                 if not hasattr(ds, 'file_meta') or not ds.file_meta:
                     ds.file_meta = pydicom.Dataset()
@@ -237,6 +237,46 @@ async def get_studies(
     
     studies = query.offset(skip).limit(limit).all()
     return studies
+
+@router.get("/pending")
+async def get_pending_studies(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Get all pending studies with center and technician information"""
+    
+    if current_user.role not in [UserRole.RADIOLOGIST, UserRole.ADMIN]:
+        raise HTTPException(status_code=403, detail="Only radiologists and admins can view pending studies")
+    
+    studies = db.query(Study).filter(
+        Study.status.in_([StudyStatus.QUEUED, StudyStatus.PROCESSING])
+    ).all()
+    
+    enriched_studies = []
+    for study in studies:
+        patient = db.query(Patient).filter(Patient.id == study.patient_id).first()
+        
+        center = db.query(DiagnosticCenter).filter(DiagnosticCenter.id == study.diagnostic_center_id).first()
+        
+        technician = db.query(User).filter(User.id == study.uploaded_by_id).first()
+        
+        study_dict = {
+            "id": study.id,
+            "study_uid": study.study_uid,
+            "patient_name": f"{patient.first_name} {patient.last_name}" if patient else "Unknown",
+            "patient_id_display": patient.patient_id if patient else "Unknown",
+            "modality": study.modality,
+            "body_part": study.body_part,
+            "study_description": study.study_description,
+            "status": study.status,
+            "created_at": study.created_at,
+            "center_name": center.name if center else "Unknown Center",
+            "technician_name": technician.full_name if technician else "Unknown Technician",
+            "priority": getattr(study, 'priority', 'normal')
+        }
+        enriched_studies.append(study_dict)
+    
+    return enriched_studies
 
 @router.get("/{study_id}", response_model=schemas.Study)
 async def get_study(
@@ -447,45 +487,6 @@ async def reject_deletion_request(
     
     return {"message": "Deletion request rejected"}
 
-@router.get("/pending", response_model=List[schemas.Study])
-async def get_pending_studies(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """Get all pending studies with center and technician information"""
-    
-    if current_user.role not in [UserRole.RADIOLOGIST, UserRole.ADMIN]:
-        raise HTTPException(status_code=403, detail="Only radiologists and admins can view pending studies")
-    
-    studies = db.query(Study).filter(
-        Study.status.in_([StudyStatus.QUEUED, StudyStatus.PROCESSING])
-    ).all()
-    
-    enriched_studies = []
-    for study in studies:
-        patient = db.query(Patient).filter(Patient.id == study.patient_id).first()
-        
-        center = db.query(DiagnosticCenter).filter(DiagnosticCenter.id == study.diagnostic_center_id).first()
-        
-        technician = db.query(User).filter(User.id == study.uploaded_by_id).first()
-        
-        study_dict = {
-            "id": study.id,
-            "study_uid": study.study_uid,
-            "patient_name": f"{patient.first_name} {patient.last_name}" if patient else "Unknown",
-            "patient_id_display": patient.patient_id if patient else "Unknown",
-            "modality": study.modality,
-            "body_part": study.body_part,
-            "study_description": study.study_description,
-            "status": study.status,
-            "created_at": study.created_at,
-            "center_name": center.name if center else "Unknown Center",
-            "technician_name": technician.full_name if technician else "Unknown Technician",
-            "priority": getattr(study, 'priority', 'normal')
-        }
-        enriched_studies.append(study_dict)
-    
-    return enriched_studies
 
 @router.put("/{study_id}/assign-to-self")
 async def assign_study_to_self(

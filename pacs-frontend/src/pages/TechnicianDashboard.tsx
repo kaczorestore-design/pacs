@@ -5,7 +5,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../co
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '../components/ui/dialog'
-import { Upload, FileText, Activity, Plus, Search, Eye, LogOut, Trash2 } from 'lucide-react'
+import { Upload, FileText, Activity, Plus, Search, Eye, LogOut, Trash2, CheckCircle } from 'lucide-react'
+import * as dicomParser from 'dicom-parser'
 
 interface Study {
   id: number
@@ -45,9 +46,11 @@ export default function TechnicianDashboard() {
     body_part: '',
     study_date: ''
   })
+  const [showUploadConfirmation, setShowUploadConfirmation] = useState(false)
+  const [uploadResult, setUploadResult] = useState<any>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const API_URL = 'http://localhost:8000'
+  const API_URL = 'http://127.0.0.1:8000'
 
   useEffect(() => {
     fetchStudies()
@@ -107,10 +110,67 @@ export default function TechnicianDashboard() {
     }
   };
 
-  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const extractDicomMetadata = async (file: File) => {
+    try {
+      const arrayBuffer = await file.arrayBuffer()
+      const byteArray = new Uint8Array(arrayBuffer)
+      const dataSet = dicomParser.parseDicom(byteArray)
+      
+      const extractTag = (tag: string) => {
+        const element = dataSet.elements[tag]
+        if (element) {
+          return dataSet.string(tag) || ''
+        }
+        return ''
+      }
+      
+      const patientName = extractTag('x00100010').replace(/\^/g, ' ').trim()
+      const nameParts = patientName.split(' ').filter((part: string) => part.length > 0)
+      
+      return {
+        patient_id: extractTag('x00100020'),
+        first_name: nameParts[0] || '',
+        last_name: nameParts.slice(1).join(' ') || '',
+        date_of_birth: extractTag('x00100030'),
+        gender: extractTag('x00100040'),
+        study_description: extractTag('x00081030'),
+        modality: extractTag('x00080060'),
+        body_part: extractTag('x00180015'),
+        study_date: extractTag('x00080020')
+      }
+    } catch (error) {
+      console.error('Error parsing DICOM file:', error)
+      return null
+    }
+  }
+
+  const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files
     if (files) {
       setSelectedFiles(Array.from(files))
+      
+      if (files.length > 0 && files[0].name.toLowerCase().endsWith('.dcm')) {
+        const metadata = await extractDicomMetadata(files[0])
+        if (metadata) {
+          setPatientData({
+            patient_id: metadata.patient_id || patientData.patient_id,
+            first_name: metadata.first_name || patientData.first_name,
+            last_name: metadata.last_name || patientData.last_name,
+            date_of_birth: metadata.date_of_birth ? 
+              `${metadata.date_of_birth.slice(0,4)}-${metadata.date_of_birth.slice(4,6)}-${metadata.date_of_birth.slice(6,8)}` : 
+              patientData.date_of_birth
+          })
+          
+          setStudyData({
+            study_description: metadata.study_description || studyData.study_description,
+            modality: metadata.modality || studyData.modality,
+            body_part: metadata.body_part || studyData.body_part,
+            study_date: metadata.study_date ? 
+              `${metadata.study_date.slice(0,4)}-${metadata.study_date.slice(4,6)}-${metadata.study_date.slice(6,8)}` : 
+              studyData.study_date
+          })
+        }
+      }
     }
   }
 
@@ -118,11 +178,34 @@ export default function TechnicianDashboard() {
     event.preventDefault()
   }
 
-  const handleDrop = (event: React.DragEvent) => {
+  const handleDrop = async (event: React.DragEvent) => {
     event.preventDefault()
     const files = event.dataTransfer.files
     if (files) {
       setSelectedFiles(Array.from(files))
+      
+      if (files.length > 0 && files[0].name.toLowerCase().endsWith('.dcm')) {
+        const metadata = await extractDicomMetadata(files[0])
+        if (metadata) {
+          setPatientData({
+            patient_id: metadata.patient_id || patientData.patient_id,
+            first_name: metadata.first_name || patientData.first_name,
+            last_name: metadata.last_name || patientData.last_name,
+            date_of_birth: metadata.date_of_birth ? 
+              `${metadata.date_of_birth.slice(0,4)}-${metadata.date_of_birth.slice(4,6)}-${metadata.date_of_birth.slice(6,8)}` : 
+              patientData.date_of_birth
+          })
+          
+          setStudyData({
+            study_description: metadata.study_description || studyData.study_description,
+            modality: metadata.modality || studyData.modality,
+            body_part: metadata.body_part || studyData.body_part,
+            study_date: metadata.study_date ? 
+              `${metadata.study_date.slice(0,4)}-${metadata.study_date.slice(4,6)}-${metadata.study_date.slice(6,8)}` : 
+              studyData.study_date
+          })
+        }
+      }
     }
   }
 
@@ -153,7 +236,8 @@ export default function TechnicianDashboard() {
 
       if (response.ok) {
         const result = await response.json()
-        alert('Study uploaded successfully!')
+        setUploadResult(result)
+        setShowUploadConfirmation(true)
         setSelectedFiles([])
         setPatientData({ patient_id: '', first_name: '', last_name: '', date_of_birth: '' })
         setStudyData({ study_description: '', modality: '', body_part: '', study_date: '' })
@@ -635,9 +719,137 @@ export default function TechnicianDashboard() {
                 </div>
               </CardContent>
             </Card>
+
+            {/* Upload Confirmation Dialog */}
+            <Dialog open={showUploadConfirmation} onOpenChange={setShowUploadConfirmation}>
+              <DialogContent className="max-w-md">
+                <DialogHeader>
+                  <DialogTitle className="flex items-center space-x-2">
+                    <CheckCircle className="h-5 w-5 text-green-600" />
+                    <span>DICOM Files Uploaded Successfully</span>
+                  </DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4">
+                  {uploadResult && (
+                    <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                      <h4 className="font-medium text-green-800 mb-3">Extracted Patient Information:</h4>
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Patient Name:</span>
+                          <span className="font-medium">{uploadResult.patient?.first_name} {uploadResult.patient?.last_name}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Patient ID:</span>
+                          <span className="font-medium">{uploadResult.patient?.patient_id}</span>
+                        </div>
+                        {uploadResult.patient?.date_of_birth && (
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">Date of Birth:</span>
+                            <span className="font-medium">{new Date(uploadResult.patient.date_of_birth).toLocaleDateString()}</span>
+                          </div>
+                        )}
+                        {uploadResult.patient?.gender && (
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">Gender:</span>
+                            <span className="font-medium">{uploadResult.patient.gender === 'M' ? 'Male' : uploadResult.patient.gender === 'F' ? 'Female' : 'Other'}</span>
+                          </div>
+                        )}
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Study Description:</span>
+                          <span className="font-medium">{uploadResult.study_description || 'N/A'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Modality:</span>
+                          <span className="font-medium">{uploadResult.modality || 'N/A'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Body Part:</span>
+                          <span className="font-medium">{uploadResult.body_part || 'N/A'}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  <div className="flex justify-end space-x-2">
+                    <Button onClick={() => setShowUploadConfirmation(false)}>
+                      Close
+                    </Button>
+                    <Button onClick={() => {
+                      setShowUploadConfirmation(false)
+                      fetchStudies()
+                    }}>
+                      View Studies
+                    </Button>
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
           </div>
         )}
       </div>
+
+      {/* Upload Confirmation Dialog */}
+      <Dialog open={showUploadConfirmation} onOpenChange={setShowUploadConfirmation}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center space-x-2">
+              <CheckCircle className="h-5 w-5 text-green-600" />
+              <span>DICOM Files Uploaded Successfully</span>
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {uploadResult && (
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                <h4 className="font-medium text-green-800 mb-3">Extracted Patient Information:</h4>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Patient Name:</span>
+                    <span className="font-medium">{uploadResult.patient?.first_name} {uploadResult.patient?.last_name}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Patient ID:</span>
+                    <span className="font-medium">{uploadResult.patient?.patient_id}</span>
+                  </div>
+                  {uploadResult.patient?.date_of_birth && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Date of Birth:</span>
+                      <span className="font-medium">{new Date(uploadResult.patient.date_of_birth).toLocaleDateString()}</span>
+                    </div>
+                  )}
+                  {uploadResult.patient?.gender && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Gender:</span>
+                      <span className="font-medium">{uploadResult.patient.gender === 'M' ? 'Male' : uploadResult.patient.gender === 'F' ? 'Female' : 'Other'}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Study Description:</span>
+                    <span className="font-medium">{uploadResult.study_description || 'N/A'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Modality:</span>
+                    <span className="font-medium">{uploadResult.modality || 'N/A'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Body Part:</span>
+                    <span className="font-medium">{uploadResult.body_part || 'N/A'}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+            <div className="flex justify-end space-x-2">
+              <Button onClick={() => setShowUploadConfirmation(false)}>
+                Close
+              </Button>
+              <Button onClick={() => {
+                setShowUploadConfirmation(false)
+                fetchStudies()
+              }}>
+                View Studies
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
