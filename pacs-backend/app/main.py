@@ -1,3 +1,7 @@
+import os
+
+os.environ['LIGHTWEIGHT_AI'] = 'true'
+
 from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File, Form, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
@@ -92,7 +96,7 @@ try:
 except Exception as e:
     print(f"⚠️ DICOM service initialization failed: {e}")
 
-from .routers import admin, diagnostic_center, studies, ai, mfa, audit
+from .routers import admin, diagnostic_center, studies, ai, mfa, audit, measurements, dicomweb, dimse
 
 app.include_router(admin.router)
 app.include_router(diagnostic_center.router)
@@ -100,5 +104,8 @@ app.include_router(studies.router)
 app.include_router(ai.router)
 app.include_router(mfa.router)
 app.include_router(audit.router)
+app.include_router(measurements.router, tags=["measurements"])
+app.include_router(dicomweb.router, prefix="/dicomweb", tags=["dicomweb"])
+app.include_router(dimse.router, prefix="/dimse", tags=["dimse"])
 app.include_router(studies.router, prefix="/api")
 app.include_router(ai.router, prefix="/api")

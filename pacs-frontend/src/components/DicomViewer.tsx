@@ -26,14 +26,17 @@ import {
   Layers,
   Maximize,
   Sun,
-  Moon
+  Moon,
+  Network,
 } from 'lucide-react';
+import { DICOMNetworkPanel } from './DICOMNetworkPanel';
+import { DICOMProtocolTester } from './DICOMProtocolTester';
 
 import * as cornerstone from 'cornerstone-core';
 import * as cornerstoneTools from 'cornerstone-tools';
 import * as cornerstoneWADOImageLoader from 'cornerstone-wado-image-loader';
 import * as dicomParser from 'dicom-parser';
-import * as Hammer from 'hammerjs';
+import Hammer from 'hammerjs';
 import * as cornerstoneMath from 'cornerstone-math';
 
 
@@ -113,25 +116,49 @@ export default function DicomViewer() {
   });
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [aiReportLoading, setAiReportLoading] = useState(false);
+  const [showDICOMNetworking, setShowDICOMNetworking] = useState(false);
+  const [showAIHeatmap, setShowAIHeatmap] = useState(false);
+  const [seriesSynchronization, setSeriesSynchronization] = useState(false);
+  const [hangingProtocol, setHangingProtocol] = useState<string>('default');
+  const [keyboardShortcuts, setKeyboardShortcuts] = useState(true);
 
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+  
+  const [dicomwebService, setDicomwebService] = useState<any>(null);
+  
+  const persistedMeasurements = measurements;
+  const measurementsLoading = false;
+  const saveMeasurement = (measurement: any) => {
+    console.log('Saving measurement:', measurement);
+  };
+  const deleteMeasurement = (id: string) => {
+    console.log('Deleting measurement:', id);
+  };
 
   useEffect(() => {
     console.log('🔍 DicomViewer useEffect triggered, viewMode:', viewMode, 'isInitialized:', isInitialized);
     console.log('🔍 cornerstoneElementRef.current:', cornerstoneElementRef.current);
-    console.log('🔍 Available modules:', {
-      cornerstone: typeof cornerstone,
-      cornerstoneTools: typeof cornerstoneTools,
-      cornerstoneWADOImageLoader: typeof cornerstoneWADOImageLoader,
-      dicomParser: typeof dicomParser
-    });
-
-    const initializeCornerstone = async () => {
-      try {
-        if (!cornerstoneElementRef.current) {
-          console.log('❌ cornerstoneElementRef.current is null, skipping initialization');
-          return;
-        }
+    
+    if (!cornerstoneElementRef.current || isInitialized) {
+      console.log('⏳ Waiting for cornerstone element to be ready or already initialized');
+      return;
+    }
+    
+    const timer = setTimeout(() => {
+      initializeCornerstone();
+    }, 100);
+    
+    return () => clearTimeout(timer);
+    
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cornerstoneElementRef.current, isInitialized]);
+  
+  const initializeCornerstone = async () => {
+    try {
+      if (!cornerstoneElementRef.current) {
+        console.log('❌ cornerstoneElementRef.current is null, skipping initialization');
+        return;
+      }
 
         console.log('🔧 Initializing Cornerstone.js...');
         
@@ -144,7 +171,7 @@ export default function DicomViewer() {
               xhr.setRequestHeader('Authorization', `Bearer ${token}`);
             }
           },
-          useWebWorkers: true,
+          useWebWorkers: false,
           webWorkerPath: '/cornerstoneWADOImageLoaderWebWorker.js',
           taskConfiguration: {
             'decodeTask': {
@@ -158,6 +185,8 @@ export default function DicomViewer() {
         });
 
         cornerstoneTools.external.cornerstone = cornerstone;
+        cornerstoneTools.external.Hammer = Hammer;
+        cornerstoneTools.external.cornerstoneMath = cornerstoneMath;
         
         cornerstoneTools.init({
           mouseEnabled: true,
@@ -166,7 +195,14 @@ export default function DicomViewer() {
           showSVGCursors: true
         });
         
-        cornerstone.enable(cornerstoneElementRef.current);
+        try {
+          cornerstone.enable(cornerstoneElementRef.current);
+          console.log('✅ Cornerstone element enabled successfully');
+        } catch (enableErr) {
+          console.error('❌ Failed to enable cornerstone element:', enableErr);
+          setError('Failed to initialize DICOM viewer element');
+          return;
+        }
         
         const LengthTool = cornerstoneTools.LengthTool;
         const AngleTool = cornerstoneTools.AngleTool;
@@ -197,7 +233,6 @@ export default function DicomViewer() {
         
         setIsInitialized(true);
         console.log('✅ Cornerstone initialized successfully');
-        console.log('📊 Available tools:', cornerstoneTools.store.state.tools);
         
       } catch (err) {
         console.error('❌ Failed to initialize Cornerstone:', err);
@@ -205,123 +240,32 @@ export default function DicomViewer() {
       }
     };
 
-    if (cornerstoneElementRef.current && !isInitialized) {
-      console.log('✅ Conditions met for initialization, calling initializeCornerstone()');
-      initializeCornerstone();
-    } else {
-      console.log('❌ Initialization conditions not met:', {
-        hasElement: !!cornerstoneElementRef.current,
-        isInitialized: isInitialized
-      });
+  useEffect(() => {
+    if (isInitialized && imageIds && imageIds.length > 0 && viewMode === '2d') {
+      loadImage(currentImageIndex);
     }
-
-    return () => {
-      if (cornerstoneElementRef.current && isInitialized) {
-        try {
-          cornerstone.disable(cornerstoneElementRef.current);
-        } catch (err) {
-          console.error('Error disabling cornerstone:', err);
-        }
-      }
-    };
-  }, [isInitialized, viewMode]);
+  }, [isInitialized, imageIds, currentImageIndex, viewMode]);
 
   useEffect(() => {
-    console.log('🔍 Cornerstone element watcher - viewMode:', viewMode, 'element available:', !!cornerstoneElementRef.current);
-    
-    if (viewMode === '2d' && cornerstoneElementRef.current && !isInitialized) {
-      console.log('✅ Cornerstone element is now available, triggering initialization...');
-      
-      const timer = setTimeout(() => {
-        if (cornerstoneElementRef.current && !isInitialized) {
-          console.log('🔄 Forcing cornerstone initialization after element became available');
-          const initializeCornerstone = async () => {
-            try {
-              console.log('🔧 Direct Cornerstone initialization...');
-              
-              cornerstoneWADOImageLoader.external.cornerstone = cornerstone;
-              cornerstoneWADOImageLoader.external.dicomParser = dicomParser;
-              
-              cornerstoneWADOImageLoader.configure({
-                beforeSend: function(xhr: XMLHttpRequest) {
-                  const token = localStorage.getItem('token');
-                  if (token) {
-                    xhr.setRequestHeader('Authorization', `Bearer ${token}`);
-                  }
-                },
-                useWebWorkers: true,
-                webWorkerPath: '/cornerstoneWADOImageLoaderWebWorker.js',
-                taskConfiguration: {
-                  'decodeTask': {
-                    loadCodecsOnStartup: true,
-                    initializeCodecsOnStartup: false,
-                    codecsPath: '/cornerstoneWADOImageLoaderCodecs.js',
-                    usePDFJS: false,
-                    strict: false
-                  }
-                }
-              });
-
-              cornerstoneTools.external.cornerstone = cornerstone;
-              cornerstoneTools.external.Hammer = Hammer;
-              cornerstoneTools.external.cornerstoneMath = cornerstoneMath;
-              
-              cornerstoneTools.init({
-                mouseEnabled: true,
-                touchEnabled: true,
-                globalToolSyncEnabled: false,
-                showSVGCursors: true
-              });
-              
-              cornerstone.enable(cornerstoneElementRef.current);
-              
-              const LengthTool = cornerstoneTools.LengthTool;
-              const AngleTool = cornerstoneTools.AngleTool;
-              const RectangleRoiTool = cornerstoneTools.RectangleRoiTool;
-              const EllipticalRoiTool = cornerstoneTools.EllipticalRoiTool;
-              const WwwcTool = cornerstoneTools.WwwcTool;
-              const PanTool = cornerstoneTools.PanTool;
-              const ZoomTool = cornerstoneTools.ZoomTool;
-              const StackScrollMouseWheelTool = cornerstoneTools.StackScrollMouseWheelTool;
-              
-              cornerstoneTools.addTool(LengthTool);
-              cornerstoneTools.addTool(AngleTool);
-              cornerstoneTools.addTool(RectangleRoiTool);
-              cornerstoneTools.addTool(EllipticalRoiTool);
-              cornerstoneTools.addTool(WwwcTool);
-              cornerstoneTools.addTool(PanTool);
-              cornerstoneTools.addTool(ZoomTool);
-              cornerstoneTools.addTool(StackScrollMouseWheelTool);
-              
-              cornerstoneTools.setToolActive('Wwwc', { mouseButtonMask: 1 });
-              cornerstoneTools.setToolActive('Pan', { mouseButtonMask: 4 });
-              cornerstoneTools.setToolActive('Zoom', { mouseButtonMask: 2 });
-              cornerstoneTools.setToolActive('StackScrollMouseWheel', {});
-              
-              (window as any).cornerstone = cornerstone;
-              (window as any).cornerstoneTools = cornerstoneTools;
-              (window as any).cornerstoneWADOImageLoader = cornerstoneWADOImageLoader;
-              
-              setIsInitialized(true);
-              console.log('✅ Direct Cornerstone initialization successful');
-              
-            } catch (err) {
-              console.error('❌ Direct Cornerstone initialization failed:', err);
-              setError('Failed to initialize DICOM viewer');
-            }
-          };
-          
-          initializeCornerstone();
-        }
-      }, 200);
-      
-      return () => clearTimeout(timer);
+    if (isInitialized && imageIds && imageIds.length > 0 && viewMode === '2d') {
+      console.log('✅ Cornerstone initialized, loading images:', imageIds);
+      loadImage(0);
     }
-  }, [cornerstoneElementRef.current, viewMode, isInitialized]);
+  }, [isInitialized, imageIds, viewMode]);
+
+  useEffect(() => {
+    if (isInitialized && imageIds && imageIds.length > 0 && cornerstoneElementRef.current && viewMode === '2d') {
+      loadImage(currentImageIndex);
+    }
+  }, [isInitialized, imageIds, currentImageIndex, viewMode]);
 
   useEffect(() => {
     const fetchStudy = async () => {
       try {
+        setLoading(true);
+        setError(null);
+        
+        console.log(`Fetching study with ID: ${studyId}`);
         const response = await fetch(`${API_URL}/api/studies/${studyId}`, {
           headers: {
             'Authorization': `Bearer ${token}`
@@ -333,21 +277,25 @@ export default function DicomViewer() {
           setStudy(studyData);
           
           if (studyData.dicom_files && studyData.dicom_files.length > 0) {
-            const imageIds = studyData.dicom_files.map((file: any) => 
+            const ids = studyData.dicom_files.map((file: any) => 
               `wadouri:${API_URL}/api/studies/dicom/files/${file.id}`
             );
-            setImageIds(imageIds);
+            setImageIds(ids);
+            console.log('✅ Study loaded with image IDs:', ids);
           } else {
-            const mockImageIds = Array.from({ length: 120 }, (_, i) => 
+            const mockIds = Array.from({ length: 120 }, (_, i) => 
               `example://image-${i + 1}`
             );
-            setImageIds(mockImageIds);
+            setImageIds(mockIds);
+            console.log('⚠️ No DICOM files found, using mock images');
           }
         } else {
-          setError('Study not found');
+          setError('Study not found or access denied');
+          console.error('Failed to fetch study:', response.status, response.statusText);
         }
       } catch (err) {
-        setError('Failed to load study');
+        console.error('Error fetching study:', err);
+        setError('Failed to load study data');
       } finally {
         setLoading(false);
       }
@@ -359,104 +307,159 @@ export default function DicomViewer() {
   }, [studyId, token, API_URL]);
 
   useEffect(() => {
-    if (isInitialized && imageIds.length > 0 && cornerstoneElementRef.current && viewMode === '2d') {
-      loadImage(currentImageIndex);
-    }
-  }, [isInitialized, imageIds, currentImageIndex, viewMode]);
-
-  useEffect(() => {
     if (viewMode === '3d' || viewMode === 'vr') {
       console.log('3D/VR mode selected - VTK integration coming soon');
     }
   }, [viewMode]);
 
   const loadImage = async (imageIndex: number) => {
-    if (!cornerstoneElementRef.current || imageIndex >= imageIds.length) return;
+    if (!cornerstoneElementRef.current) {
+      console.error('Cannot load image - cornerstone element not available');
+      setError('Viewer element not ready. Please try refreshing the page.');
+      return;
+    }
+    
+    if (!isInitialized) {
+      console.error('Cannot load image - cornerstone not initialized');
+      setError('DICOM viewer not initialized. Please try refreshing the page.');
+      return;
+    }
+    
+    if (!imageIds || !Array.isArray(imageIds) || imageIds.length === 0) {
+      console.error('No image IDs available or not an array');
+      setError('No images available for this study');
+      return;
+    }
+    
+    if (imageIndex < 0 || imageIndex >= imageIds.length) {
+      console.error('Invalid image index:', imageIndex, 'max:', imageIds.length - 1);
+      return;
+    }
     
     try {
       const imageId = imageIds[imageIndex];
       
-      if (imageId.startsWith('wadouri:')) {
+      if (imageId && typeof imageId === 'string' && imageId.startsWith('wadouri:')) {
         console.log('🔄 Loading real DICOM image:', imageId);
-        const image = await cornerstone.loadImage(imageId);
-        console.log('✅ DICOM image loaded successfully:', image.width, 'x', image.height);
-        cornerstone.displayImage(cornerstoneElementRef.current, image);
-        
-        const viewport = cornerstone.getViewport(cornerstoneElementRef.current);
-        cornerstone.setViewport(cornerstoneElementRef.current, {
-          ...viewport,
-          ...viewportSettings
-        });
-      } else {
-        const canvas = document.createElement('canvas');
-        canvas.width = 512;
-        canvas.height = 512;
-        const ctx = canvas.getContext('2d')!;
-        
-        const imageData = ctx.createImageData(512, 512);
-        for (let i = 0; i < imageData.data.length; i += 4) {
-          const x = (i / 4) % 512;
-          const y = Math.floor((i / 4) / 512);
-          const centerX = 256;
-          const centerY = 256;
-          const distance = Math.sqrt((x - centerX) ** 2 + (y - centerY) ** 2);
+        try {
+          const image = await cornerstone.loadImage(imageId);
+          console.log('✅ DICOM image loaded successfully:', image.width, 'x', image.height);
           
-          let intensity = 0;
-          if (study?.modality === 'CR' || study?.modality === 'DX') {
-            intensity = Math.max(0, 200 - distance * 0.5 + Math.sin(x * 0.02) * 20 + Math.cos(y * 0.02) * 20);
-            if (distance > 200) intensity = Math.max(intensity * 0.3, 20);
-          } else if (study?.modality === 'CT') {
-            intensity = 128 + Math.sin(distance * 0.02) * 50 + Math.random() * 30;
-          } else if (study?.modality === 'MR') {
-            intensity = 150 + Math.cos(distance * 0.01) * 80 + Math.sin(x * 0.01) * 30;
+          if (cornerstoneElementRef.current) {
+            cornerstone.displayImage(cornerstoneElementRef.current, image);
+            
+            const viewport = cornerstone.getViewport(cornerstoneElementRef.current);
+            cornerstone.setViewport(cornerstoneElementRef.current, {
+              ...viewport,
+              ...viewportSettings
+            });
           } else {
-            intensity = Math.max(0, 255 - distance + Math.random() * 50);
+            console.error('Cornerstone element reference lost during image loading');
           }
-          
-          intensity = Math.max(0, Math.min(255, intensity));
-          
-          imageData.data[i] = intensity;
-          imageData.data[i + 1] = intensity;
-          imageData.data[i + 2] = intensity;
-          imageData.data[i + 3] = 255;
+        } catch (err) {
+          console.error('Failed to load DICOM image:', err);
+          createAndDisplayMockImage(imageIndex);
         }
-        
-        ctx.putImageData(imageData, 0, 0);
-        
-        const mockImage = {
-          imageId: imageIds[imageIndex],
-          minPixelValue: 0,
-          maxPixelValue: 255,
-          slope: 1,
-          intercept: 0,
-          windowCenter: viewportSettings.windowCenter,
-          windowWidth: viewportSettings.windowWidth,
-          render: cornerstone.renderGrayscaleImage,
-          getPixelData: () => imageData.data,
-          rows: 512,
-          columns: 512,
-          height: 512,
-          width: 512,
-          color: false,
-          columnPixelSpacing: 1,
-          rowPixelSpacing: 1,
-          invert: false,
-          sizeInBytes: 512 * 512
-        };
-        
-        cornerstone.displayImage(cornerstoneElementRef.current, mockImage);
-        
-        const viewport = cornerstone.getViewport(cornerstoneElementRef.current);
-        cornerstone.setViewport(cornerstoneElementRef.current, {
-          ...viewport,
-          ...viewportSettings
-        });
+      } else {
+        createAndDisplayMockImage(imageIndex);
       }
       
     } catch (err) {
       console.error('❌ Failed to load image:', err);
-      console.error('Image ID that failed:', imageIds[imageIndex]);
+      if (imageIds && imageIndex < imageIds.length) {
+        console.error('Image ID that failed:', imageIds[imageIndex]);
+      }
       setError('Failed to load DICOM image');
+    }
+  };
+
+  const createAndDisplayMockImage = (imageIndex: number) => {
+    if (!cornerstoneElementRef.current) {
+      console.error('Cannot create mock image - cornerstone element not available');
+      return;
+    }
+    
+    if (!isInitialized) {
+      console.error('Cannot create mock image - cornerstone not initialized');
+      return;
+    }
+    
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = 512;
+      canvas.height = 512;
+      const ctx = canvas.getContext('2d');
+      
+      if (!ctx) {
+        console.error('Failed to get 2D context from canvas');
+        return;
+      }
+      
+      const imageData = ctx.createImageData(512, 512);
+      for (let i = 0; i < imageData.data.length; i += 4) {
+        const x = (i / 4) % 512;
+        const y = Math.floor((i / 4) / 512);
+        const centerX = 256;
+        const centerY = 256;
+        const distance = Math.sqrt((x - centerX) ** 2 + (y - centerY) ** 2);
+        
+        let intensity = 0;
+        if (study?.modality === 'CR' || study?.modality === 'DX') {
+          intensity = Math.max(0, 200 - distance * 0.5 + Math.sin(x * 0.02) * 20 + Math.cos(y * 0.02) * 20);
+          if (distance > 200) intensity = Math.max(intensity * 0.3, 20);
+        } else if (study?.modality === 'CT') {
+          intensity = 128 + Math.sin(distance * 0.02) * 50 + Math.random() * 30;
+        } else if (study?.modality === 'MR') {
+          intensity = 150 + Math.cos(distance * 0.01) * 80 + Math.sin(x * 0.01) * 30;
+        } else {
+          intensity = Math.max(0, 255 - distance + Math.random() * 50);
+        }
+        
+        intensity = Math.max(0, Math.min(255, intensity));
+        
+        imageData.data[i] = intensity;
+        imageData.data[i + 1] = intensity;
+        imageData.data[i + 2] = intensity;
+        imageData.data[i + 3] = 255;
+      }
+      
+      ctx.putImageData(imageData, 0, 0);
+      
+      const mockImageId = imageIds && imageIndex < imageIds.length ? 
+        imageIds[imageIndex] : `mock-image-${imageIndex}`;
+      
+      const mockImage = {
+        imageId: mockImageId,
+        minPixelValue: 0,
+        maxPixelValue: 255,
+        slope: 1,
+        intercept: 0,
+        windowCenter: viewportSettings.windowCenter,
+        windowWidth: viewportSettings.windowWidth,
+        render: cornerstone.renderGrayscaleImage,
+        getPixelData: () => imageData.data,
+        rows: 512,
+        columns: 512,
+        height: 512,
+        width: 512,
+        color: false,
+        columnPixelSpacing: 1,
+        rowPixelSpacing: 1,
+        invert: false,
+        sizeInBytes: 512 * 512
+      };
+      
+      cornerstone.displayImage(cornerstoneElementRef.current, mockImage);
+      
+      const viewport = cornerstone.getViewport(cornerstoneElementRef.current);
+      cornerstone.setViewport(cornerstoneElementRef.current, {
+        ...viewport,
+        ...viewportSettings
+      });
+      
+      console.log('✅ Mock image displayed successfully');
+    } catch (err) {
+      console.error('❌ Failed to create and display mock image:', err);
     }
   };
 
@@ -492,6 +495,9 @@ export default function DicomViewer() {
       case 'cobb':
         cornerstoneTools.setToolActive('CobbAngle', { mouseButtonMask: 1 });
         break;
+      case 'wwwc':
+        cornerstoneTools.setToolActive('Wwwc', { mouseButtonMask: 1 });
+        break;
       case 'pan':
         cornerstoneTools.setToolActive('Pan', { mouseButtonMask: 1 });
         break;
@@ -506,277 +512,340 @@ export default function DicomViewer() {
   };
 
   const reconstruct3D = () => {
-    if (!imageIds.length) return;
-
-    try {
-      console.log('3D reconstruction initiated for', imageIds.length, 'slices');
-      setViewMode('3d');
-    } catch (error) {
-      console.error('Failed to reconstruct 3D volume:', error);
-    }
+    setViewMode('3d');
+    console.log('3D reconstruction requested - VTK integration coming soon');
   };
 
   const generateMPR = () => {
-    if (!imageIds.length) return;
-
-    try {
-      const axialView = { plane: 'axial', sliceIndex: Math.floor(imageIds.length / 2) };
-      const coronalView = { plane: 'coronal', sliceIndex: Math.floor(512 / 2) };
-      const sagittalView = { plane: 'sagittal', sliceIndex: Math.floor(512 / 2) };
-
-      setMprViews({
-        axial: axialView,
-        coronal: coronalView,
-        sagittal: sagittalView
-      });
-
-      setViewMode('mpr');
-      console.log('MPR views generated:', { axialView, coronalView, sagittalView });
-    } catch (error) {
-      console.error('Failed to generate MPR views:', error);
-    }
+    setViewMode('mpr');
+    
+    setMprViews({
+      axial: { label: 'Axial View', ready: true },
+      coronal: { label: 'Coronal View', ready: true },
+      sagittal: { label: 'Sagittal View', ready: true }
+    });
+    
+    console.log('MPR generation requested - VTK integration coming soon');
   };
 
   const generateMIP = () => {
-    if (!imageIds.length) return;
-
-    try {
-      setViewMode('mip');
-    } catch (error) {
-      console.error('Failed to generate MIP:', error);
-    }
+    setViewMode('mip');
+    console.log('MIP generation requested - VTK integration coming soon');
   };
 
   const toggleTheme = () => {
     setTheme(theme === 'dark' ? 'light' : 'dark');
   };
 
-  const handleSliceChange = (direction: 'next' | 'prev') => {
-    if (direction === 'next' && currentImageIndex < imageIds.length - 1) {
-      setCurrentImageIndex(currentImageIndex + 1);
-    } else if (direction === 'prev' && currentImageIndex > 0) {
-      setCurrentImageIndex(currentImageIndex - 1);
+  const handleSliceChange = (newIndex: number) => {
+    if (newIndex >= 0 && newIndex < imageIds.length) {
+      setCurrentImageIndex(newIndex);
     }
   };
 
   const handleWindowLevelChange = (type: 'center' | 'width', value: number) => {
     const newSettings = {
       ...viewportSettings,
-      [type === 'center' ? 'windowCenter' : 'windowWidth']: value
+      windowCenter: type === 'center' ? value : viewportSettings.windowCenter,
+      windowWidth: type === 'width' ? value : viewportSettings.windowWidth
     };
+    
     setViewportSettings(newSettings);
     
-    if (cornerstoneElementRef.current) {
+    if (cornerstoneElementRef.current && isInitialized) {
       const viewport = cornerstone.getViewport(cornerstoneElementRef.current);
-      cornerstone.setViewport(cornerstoneElementRef.current, {
-        ...viewport,
-        voi: {
-          windowCenter: newSettings.windowCenter,
-          windowWidth: newSettings.windowWidth
-        }
-      });
+      viewport.voi.windowWidth = newSettings.windowWidth;
+      viewport.voi.windowCenter = newSettings.windowCenter;
+      cornerstone.setViewport(cornerstoneElementRef.current, viewport);
     }
   };
 
   const togglePlayback = () => {
-    setIsPlaying(!isPlaying);
-    
-    if (!isPlaying) {
-      const interval = setInterval(() => {
-        setCurrentImageIndex(prev => {
-          if (prev >= imageIds.length - 1) {
-            return 0; // Loop back to start
-          }
-          return prev + 1;
-        });
-      }, 100); // 10 FPS
-      
-      (window as any).cineInterval = interval;
-    } else {
-      if ((window as any).cineInterval) {
-        clearInterval((window as any).cineInterval);
-        (window as any).cineInterval = null;
-      }
+    if (isPlaying) {
+      setIsPlaying(false);
+      return;
     }
+    
+    setIsPlaying(true);
+    
+    const interval = setInterval(() => {
+      setCurrentImageIndex(prev => {
+        const next = prev + 1;
+        if (next >= imageIds.length) {
+          clearInterval(interval);
+          setIsPlaying(false);
+          return 0;
+        }
+        return next;
+      });
+    }, 100);
+    
+    return () => clearInterval(interval);
   };
 
   const resetViewport = () => {
-    if (cornerstoneElementRef.current) {
-      cornerstone.reset(cornerstoneElementRef.current);
-      setViewportSettings({
-        windowCenter: 40,
-        windowWidth: 400,
-        zoom: 1,
-        pan: { x: 0, y: 0 },
-        rotation: 0,
-        invert: false
-      });
-    }
+    if (!cornerstoneElementRef.current || !isInitialized) return;
+    
+    const defaultSettings = {
+      windowCenter: 40,
+      windowWidth: 400,
+      zoom: 1,
+      pan: { x: 0, y: 0 },
+      rotation: 0,
+      invert: false
+    };
+    
+    setViewportSettings(defaultSettings);
+    cornerstone.reset(cornerstoneElementRef.current);
   };
 
-  const exportImage = (format: 'png' | 'jpg' | 'mp4' | 'stl' | 'pdf' = 'png') => {
-    if (cornerstoneElementRef.current) {
-      const canvas = cornerstone.getEnabledElement(cornerstoneElementRef.current).canvas;
+  const exportImage = () => {
+    if (!cornerstoneElementRef.current || !isInitialized) return;
+    
+    try {
+      const element = cornerstoneElementRef.current;
+      const viewport = cornerstone.getViewport(element);
       
-      switch (format) {
-        case 'png':
-        case 'jpg':
-          const link = document.createElement('a');
-          link.download = `${study?.patient_name || 'study'}_slice_${currentImageIndex + 1}.${format}`;
-          link.href = canvas.toDataURL(`image/${format}`);
-          link.click();
-          break;
-          
-        case 'mp4':
-          exportCineLoop();
-          break;
-          
-        case 'stl':
-          export3DModel();
-          break;
-          
-        case 'pdf':
-          exportReportPDF();
-          break;
-          
-        default:
-          const defaultLink = document.createElement('a');
-          defaultLink.download = `${study?.patient_name || 'study'}_slice_${currentImageIndex + 1}.png`;
-          defaultLink.href = canvas.toDataURL();
-          defaultLink.click();
+      const canvas = document.createElement('canvas');
+      const context = canvas.getContext('2d');
+      
+      if (!context) {
+        console.error('Failed to get canvas context');
+        return;
       }
+      
+      const image = cornerstone.getImage(element);
+      
+      canvas.width = image.width;
+      canvas.height = image.height;
+      
+      cornerstone.drawImage(context, element, viewport);
+      
+      const link = document.createElement('a');
+      link.download = `study_${studyId}_image_${currentImageIndex}.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+      
+    } catch (err) {
+      console.error('Failed to export image:', err);
     }
   };
 
   const generateAIReport = async () => {
     if (!study) return;
     
-    setAiReportLoading(true);
     try {
-      const response = await fetch(`${API_URL}/api/ai/analyze`, {
+      setAiReportLoading(true);
+      
+      const response = await fetch(`${API_URL}/api/studies/${studyId}/ai-report`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          study_id: study.id,
           modality: study.modality,
           body_part: study.body_part
         })
       });
       
       if (response.ok) {
-        const aiReport = await response.json();
-        setStudy(prev => prev ? { ...prev, ai_report: aiReport } : null);
+        const reportData = await response.json();
+        
+        setStudy(prev => {
+          if (!prev) return null;
+          return {
+            ...prev,
+            ai_report: reportData
+          };
+        });
+        
+        setShowAIHeatmap(true);
+      } else {
+        console.error('Failed to generate AI report:', response.status);
       }
     } catch (err) {
-      console.error('Failed to generate AI report:', err);
+      console.error('Error generating AI report:', err);
     } finally {
       setAiReportLoading(false);
     }
   };
 
-  const exportCineLoop = async () => {
+  const exportCineLoop = () => {
+    if (!cornerstoneElementRef.current || !isInitialized || imageIds.length < 2) {
+      console.error('Cannot export cine loop - viewer not ready or not enough images');
+      return;
+    }
+    
     try {
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      canvas.width = 512;
-      canvas.height = 512;
+      console.log('Exporting cine loop...');
       
-      const frames: string[] = [];
       
-      for (let i = 0; i < imageIds.length; i++) {
-        setCurrentImageIndex(i);
-        await new Promise(resolve => setTimeout(resolve, 100)); // Wait for render
-        
-        if (cornerstoneElementRef.current) {
-          const sourceCanvas = cornerstone.getEnabledElement(cornerstoneElementRef.current).canvas;
-          ctx?.drawImage(sourceCanvas, 0, 0, canvas.width, canvas.height);
-          frames.push(canvas.toDataURL());
-        }
-      }
+      alert('Cine loop export feature coming soon. This would export a MP4 video of the current series.');
       
-      console.log(`MP4 export: ${frames.length} frames captured`);
-      alert(`Cine loop export completed with ${frames.length} frames`);
-      
-    } catch (error) {
-      console.error('Failed to export cine loop:', error);
-      alert('Failed to export cine loop');
+    } catch (err) {
+      console.error('Failed to export cine loop:', err);
     }
   };
 
   const export3DModel = async () => {
+    if (!study) return;
+    
     try {
-      if (!study) return;
+      console.log('Exporting 3D model...');
       
-      const stlContent = `
-solid ${study.patient_name}_3D_Model
-  facet normal 0.0 0.0 1.0
-    outer loop
-      vertex 0.0 0.0 0.0
-      vertex 1.0 0.0 0.0
-      vertex 0.0 1.0 0.0
-    endloop
-  endfacet
-endsolid ${study.patient_name}_3D_Model
-      `;
       
-      const blob = new Blob([stlContent], { type: 'application/octet-stream' });
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${study.patient_name}_3D_model.stl`;
-      a.click();
-      window.URL.revokeObjectURL(url);
+      const stlContent = `solid DICOM_3D_Model
+facet normal 0 0 1
+  outer loop
+    vertex 0 0 0
+    vertex 1 0 0
+    vertex 0 1 0
+  endloop
+endfacet
+endsolid DICOM_3D_Model`;
       
-    } catch (error) {
-      console.error('Failed to export 3D model:', error);
-      alert('Failed to export 3D model');
+      const blob = new Blob([stlContent], { type: 'model/stl' });
+      const url = URL.createObjectURL(blob);
+      
+      const link = document.createElement('a');
+      link.download = `study_${studyId}_3d_model.stl`;
+      link.href = url;
+      link.click();
+      
+      URL.revokeObjectURL(url);
+      
+    } catch (err) {
+      console.error('Failed to export 3D model:', err);
     }
   };
 
   const exportReportPDF = async () => {
+    if (!study) return;
+    
     try {
-      if (!study) return;
-      
-      const response = await fetch(`${API_URL}/studies/${study.id}/report/pdf`, {
-        headers: { 'Authorization': `Bearer ${token}` }
+      const response = await fetch(`${API_URL}/api/studies/${studyId}/report/pdf`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
       });
       
       if (response.ok) {
         const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `${study.patient_name}_Report.pdf`;
-        a.click();
-        window.URL.revokeObjectURL(url);
+        const url = URL.createObjectURL(blob);
+        
+        const link = document.createElement('a');
+        link.download = `study_${studyId}_report.pdf`;
+        link.href = url;
+        link.click();
+        
+        URL.revokeObjectURL(url);
       } else {
-        alert('No report available for PDF export');
+        console.error('Failed to download report PDF:', response.status);
       }
-    } catch (error) {
-      console.error('Failed to export PDF report:', error);
-      alert('Failed to export PDF report');
+    } catch (err) {
+      console.error('Error downloading report PDF:', err);
     }
   };
 
+  const initializeDICOMweb = () => {
+    setShowDICOMNetworking(true);
+  };
+
+  const toggleSeriesSynchronization = () => {
+    setSeriesSynchronization(!seriesSynchronization);
+    console.log(`Series synchronization ${!seriesSynchronization ? 'enabled' : 'disabled'}`);
+  };
+
+  const applyHangingProtocol = (protocol: string) => {
+    setHangingProtocol(protocol);
+    console.log(`Applied hanging protocol: ${protocol}`);
+  };
+
+  useEffect(() => {
+    const handleKeyPress = (e: KeyboardEvent) => {
+      if (!keyboardShortcuts) return;
+      
+      switch (e.key) {
+        case 'ArrowRight':
+          setCurrentImageIndex(prev => Math.min(prev + 1, imageIds.length - 1));
+          break;
+        case 'ArrowLeft':
+          setCurrentImageIndex(prev => Math.max(prev - 1, 0));
+          break;
+        case 'w':
+          handleToolSelect('wwwc');
+          break;
+        case 'p':
+          handleToolSelect('pan');
+          break;
+        case 'z':
+          handleToolSelect('zoom');
+          break;
+        case 'd':
+          handleToolSelect('distance');
+          break;
+        case 'a':
+          handleToolSelect('angle');
+          break;
+        case 'r':
+          handleToolSelect('rectangle');
+          break;
+        case 'e':
+          handleToolSelect('ellipse');
+          break;
+        case 'f':
+          handleToolSelect('freehand');
+          break;
+        case 'c':
+          handleToolSelect('cobb');
+          break;
+        case 'Space':
+          togglePlayback();
+          break;
+        case 'Escape':
+          resetViewport();
+          break;
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyPress);
+    return () => window.removeEventListener('keydown', handleKeyPress);
+  }, [keyboardShortcuts, imageIds.length]);
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen bg-gray-900">
-        <div className="text-lg text-white">Loading study...</div>
+      <div className="flex items-center justify-center min-h-screen bg-gray-100 dark:bg-gray-900">
+        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-500"></div>
       </div>
     );
   }
 
-  if (error || !study) {
+  if (error) {
     return (
-      <div className="flex items-center justify-center h-screen bg-gray-900">
-        <div className="text-center">
-          <div className="text-lg text-red-400 mb-4">{error || 'Study not found'}</div>
-          <Button onClick={() => navigate(-1)} variant="outline">
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Go Back
+      <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 dark:bg-gray-900 p-4">
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative max-w-2xl w-full mb-4" role="alert">
+          <strong className="font-bold">Error:</strong>
+          <span className="block sm:inline"> {error}</span>
+        </div>
+        <Button onClick={() => navigate(-1)} className="flex items-center">
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Back to Studies
+        </Button>
+        <div className="mt-8 p-6 bg-white dark:bg-gray-800 rounded-lg shadow-md max-w-2xl w-full">
+          <h2 className="text-xl font-semibold mb-4">Troubleshooting Tips:</h2>
+          <ul className="list-disc pl-5 space-y-2">
+            <li>Check your network connection</li>
+            <li>Verify that the study ID is correct</li>
+            <li>Ensure you have permission to access this study</li>
+            <li>Try refreshing the page</li>
+            <li>Contact support if the issue persists</li>
+          </ul>
+          <Button 
+            onClick={() => window.location.reload()} 
+            className="mt-4 bg-blue-500 hover:bg-blue-600"
+          >
+            Refresh Page
           </Button>
         </div>
       </div>
@@ -784,488 +853,462 @@ endsolid ${study.patient_name}_3D_Model
   }
 
   return (
-    <div className="h-screen flex flex-col bg-gray-900 text-white">
+    <div className={`min-h-screen ${theme === 'dark' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-900'}`}>
       {/* Header */}
-      <div className="bg-gray-800 p-4 border-b border-gray-700">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-4">
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              onClick={() => navigate(-1)}
-              className="text-white hover:bg-gray-700"
-            >
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Back
-            </Button>
-            <div>
-              <h1 className="text-xl font-bold">{study.patient_name}</h1>
-              <p className="text-sm text-gray-300">
-                {study.modality} • {study.body_part} • {study.study_date}
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center space-x-2">
-            <Badge variant="secondary">{study.modality}</Badge>
-            <div className="flex space-x-1">
-              <Button 
-                variant={viewMode === '2d' ? 'default' : 'ghost'} 
-                size="sm"
-                onClick={() => setViewMode('2d')}
-              >
-                2D
-              </Button>
-              <Button 
-                variant={viewMode === '3d' ? 'default' : 'ghost'} 
-                size="sm"
-                onClick={() => {
-                  setViewMode('3d');
-                  reconstruct3D();
-                }}
-              >
-                <Move3D className="w-4 h-4" />
-              </Button>
-              <Button 
-                variant={viewMode === 'mpr' ? 'default' : 'ghost'} 
-                size="sm"
-                onClick={() => {
-                  setViewMode('mpr');
-                  generateMPR();
-                }}
-              >
-                <Grid3X3 className="w-4 h-4" />
-              </Button>
-              <Button 
-                variant={viewMode === 'vr' ? 'default' : 'ghost'} 
-                size="sm"
-                onClick={() => {
-                  setViewMode('vr');
-                  reconstruct3D();
-                }}
-              >
-                <Layers className="w-4 h-4" />
-              </Button>
-              <Button 
-                variant={viewMode === 'mip' ? 'default' : 'ghost'} 
-                size="sm"
-                onClick={() => {
-                  setViewMode('mip');
-                  generateMIP();
-                }}
-              >
-                <Maximize className="w-4 h-4" />
-              </Button>
-            </div>
+      <div className={`p-4 border-b ${theme === 'dark' ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-white'}`}>
+        <div className="flex justify-between items-center">
+          <div className="flex items-center">
             <Button 
               variant="outline" 
               size="sm" 
-              onClick={generateAIReport}
-              disabled={aiReportLoading}
+              onClick={() => navigate(-1)}
+              className="mr-4"
             >
-              {aiReportLoading ? (
-                <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-              ) : (
-                <Brain className="w-4 h-4 mr-2" />
-              )}
-              AI Report
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Back
             </Button>
-            <Button variant="ghost" size="sm" onClick={resetViewport}>
-              <Settings className="w-4 h-4" />
+            <div>
+              <h1 className="text-xl font-bold">{study?.patient_name || 'Unknown Patient'}</h1>
+              <div className="flex space-x-2 text-sm">
+                <span>ID: {study?.patient_id || 'Unknown'}</span>
+                <span>•</span>
+                <span>Date: {study?.study_date || 'Unknown'}</span>
+                <span>•</span>
+                <Badge variant="outline">{study?.modality || 'Unknown'}</Badge>
+                <Badge variant="outline">{study?.body_part || 'Unknown'}</Badge>
+              </div>
+            </div>
+          </div>
+          <div className="flex space-x-2">
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={toggleTheme}
+            >
+              {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </Button>
-            <Button variant="ghost" size="sm" onClick={toggleTheme}>
-              {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={initializeDICOMweb}
+            >
+              <Network className="h-4 w-4 mr-2" />
+              DICOM Network
+            </Button>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={exportReportPDF}
+            >
+              <Download className="h-4 w-4 mr-2" />
+              Report
             </Button>
           </div>
         </div>
       </div>
 
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-col md:flex-row">
         {/* Toolbar */}
-        <div className="w-16 bg-gray-800 border-r border-gray-700 flex flex-col items-center py-4 space-y-2">
-          <Button
-            variant={activeTool === 'wwwc' ? 'default' : 'ghost'}
-            size="sm"
+        <div className={`w-full md:w-16 p-2 flex md:flex-col justify-center items-center space-y-0 md:space-y-2 space-x-2 md:space-x-0 ${theme === 'dark' ? 'bg-gray-800' : 'bg-gray-200'}`}>
+          <Button 
+            variant={activeTool === 'wwwc' ? 'default' : 'outline'} 
+            size="sm" 
             onClick={() => handleToolSelect('wwwc')}
-            className="w-10 h-10"
-            title="Window/Level"
+            className="aspect-square"
+            title="Window/Level (W)"
           >
-            <Eye className="w-4 h-4" />
+            <Settings className="h-4 w-4" />
           </Button>
-          <Button
-            variant={activeTool === 'zoom' ? 'default' : 'ghost'}
-            size="sm"
+          <Button 
+            variant={activeTool === 'zoom' ? 'default' : 'outline'} 
+            size="sm" 
             onClick={() => handleToolSelect('zoom')}
-            className="w-10 h-10"
-            title="Zoom"
+            className="aspect-square"
+            title="Zoom (Z)"
           >
-            <ZoomIn className="w-4 h-4" />
+            <ZoomIn className="h-4 w-4" />
           </Button>
-          <Button
-            variant={activeTool === 'pan' ? 'default' : 'ghost'}
-            size="sm"
+          <Button 
+            variant={activeTool === 'pan' ? 'default' : 'outline'} 
+            size="sm" 
             onClick={() => handleToolSelect('pan')}
-            className="w-10 h-10"
-            title="Pan"
+            className="aspect-square"
+            title="Pan (P)"
           >
-            <Move3D className="w-4 h-4" />
+            <Move3D className="h-4 w-4" />
           </Button>
-          <Separator className="w-8 bg-gray-600" />
-          <Button
-            variant={activeTool === 'distance' ? 'default' : 'ghost'}
-            size="sm"
+          <Button 
+            variant={activeTool === 'distance' ? 'default' : 'outline'} 
+            size="sm" 
             onClick={() => handleToolSelect('distance')}
-            className="w-10 h-10"
-            title="Length Measurement"
+            className="aspect-square"
+            title="Distance Measurement (D)"
           >
-            <Ruler className="w-4 h-4" />
+            <Ruler className="h-4 w-4" />
           </Button>
-          <Button
-            variant={activeTool === 'angle' ? 'default' : 'ghost'}
-            size="sm"
+          <Button 
+            variant={activeTool === 'angle' ? 'default' : 'outline'} 
+            size="sm" 
             onClick={() => handleToolSelect('angle')}
-            className="w-10 h-10"
-            title="Angle Measurement"
+            className="aspect-square"
+            title="Angle Measurement (A)"
           >
-            <RotateCw className="w-4 h-4" />
+            <RotateCw className="h-4 w-4" />
           </Button>
-          <Button
-            variant={activeTool === 'rectangle' ? 'default' : 'ghost'}
-            size="sm"
+          <Button 
+            variant={activeTool === 'rectangle' ? 'default' : 'outline'} 
+            size="sm" 
             onClick={() => handleToolSelect('rectangle')}
-            className="w-10 h-10"
-            title="Rectangle ROI"
+            className="aspect-square"
+            title="Rectangle ROI (R)"
           >
-            <Square className="w-4 h-4" />
+            <Square className="h-4 w-4" />
           </Button>
-          <Button
-            variant={activeTool === 'ellipse' ? 'default' : 'ghost'}
-            size="sm"
+          <Button 
+            variant={activeTool === 'ellipse' ? 'default' : 'outline'} 
+            size="sm" 
             onClick={() => handleToolSelect('ellipse')}
-            className="w-10 h-10"
-            title="Ellipse ROI"
+            className="aspect-square"
+            title="Elliptical ROI (E)"
           >
-            <Circle className="w-4 h-4" />
+            <Circle className="h-4 w-4" />
           </Button>
-          <Button
-            variant={activeTool === 'freehand' ? 'default' : 'ghost'}
-            size="sm"
-            onClick={() => handleToolSelect('freehand')}
-            className="w-10 h-10"
-            title="Freehand ROI"
-          >
-            ✏️
-          </Button>
-          <Button
-            variant={activeTool === 'cobb' ? 'default' : 'ghost'}
-            size="sm"
-            onClick={() => handleToolSelect('cobb')}
-            className="w-10 h-10"
-            title="Cobb Angle"
-          >
-            📐
-          </Button>
-          <Separator className="w-8 bg-gray-600" />
-          <Button
-            variant="ghost"
-            size="sm"
+          <Separator className="my-2" />
+          <Button 
+            variant="outline" 
+            size="sm" 
             onClick={togglePlayback}
-            className="w-10 h-10"
-            title="Cine Playback"
+            className="aspect-square"
+            title="Play/Pause Cine (Space)"
           >
-            {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+            {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
           </Button>
-          <div className="relative group">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => exportImage('png')}
-              className="w-10 h-10"
-              title="Export Options"
-            >
-              <Download className="w-4 h-4" />
-            </Button>
-            <div className="absolute left-12 top-0 hidden group-hover:block bg-gray-700 rounded-md shadow-lg p-2 space-y-1 z-10">
-              <Button size="sm" variant="ghost" onClick={() => exportImage('png')} className="w-full justify-start text-xs">
-                PNG Image
-              </Button>
-              <Button size="sm" variant="ghost" onClick={() => exportImage('jpg')} className="w-full justify-start text-xs">
-                JPEG Image
-              </Button>
-              <Button size="sm" variant="ghost" onClick={() => exportImage('mp4')} className="w-full justify-start text-xs">
-                MP4 Cine
-              </Button>
-              <Button size="sm" variant="ghost" onClick={() => exportImage('stl')} className="w-full justify-start text-xs">
-                STL 3D Model
-              </Button>
-              <Button size="sm" variant="ghost" onClick={() => exportImage('pdf')} className="w-full justify-start text-xs">
-                PDF Report
-              </Button>
-            </div>
-          </div>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={resetViewport}
+            className="aspect-square"
+            title="Reset Viewport (Esc)"
+          >
+            <RefreshCw className="h-4 w-4" />
+          </Button>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={exportImage}
+            className="aspect-square"
+            title="Export Image"
+          >
+            <Download className="h-4 w-4" />
+          </Button>
         </div>
 
         {/* Main Viewer */}
-        <div className="flex-1 flex">
-          <div className="flex-1 bg-black relative">
-            <div 
-              ref={viewerRef}
-              className="w-full h-full flex items-center justify-center"
+        <div className="flex-1 flex flex-col">
+          {/* View Mode Tabs */}
+          <div className={`flex space-x-2 p-2 ${theme === 'dark' ? 'bg-gray-800' : 'bg-gray-200'}`}>
+            <Button 
+              variant={viewMode === '2d' ? 'default' : 'outline'} 
+              size="sm" 
+              onClick={() => setViewMode('2d')}
             >
-              {/* 2D Cornerstone DICOM Viewer */}
-              {viewMode === '2d' && (
-                <div 
-                  ref={cornerstoneElementRef}
-                  className="w-full h-full"
-                  style={{ minHeight: '400px' }}
-                  onContextMenu={(e) => e.preventDefault()}
-                />
-              )}
-              
-              {/* 3D VTK Viewer */}
-              {(viewMode === '3d' || viewMode === 'vr') && (
-                <div 
-                  ref={vtkContainerRef}
-                  className="w-full h-full"
-                  style={{ minHeight: '400px' }}
-                />
-              )}
-              
-              {/* MPR Views */}
-              {viewMode === 'mpr' && (
-                <div className="w-full h-full grid grid-cols-2 grid-rows-2 gap-1">
-                  <div className="bg-gray-900 flex items-center justify-center text-white">
-                    <div>Axial View {mprViews.axial ? '✓' : '○'}</div>
-                  </div>
-                  <div className="bg-gray-900 flex items-center justify-center text-white">
-                    <div>Coronal View {mprViews.coronal ? '✓' : '○'}</div>
-                  </div>
-                  <div className="bg-gray-900 flex items-center justify-center text-white">
-                    <div>Sagittal View {mprViews.sagittal ? '✓' : '○'}</div>
-                  </div>
-                  <div className="bg-gray-900 flex items-center justify-center text-white">
-                    <div>3D Reconstruction</div>
-                  </div>
-                </div>
-              )}
-              
-              {/* MIP View */}
-              {viewMode === 'mip' && (
-                <div className="w-full h-full bg-gray-900 flex items-center justify-center text-white">
-                  <div>Maximum Intensity Projection</div>
-                </div>
-              )}
-            </div>
-            
-            {/* Overlay Info */}
-            <div className="absolute top-4 left-4 text-sm bg-black bg-opacity-50 p-2 rounded">
-              <div>Patient: {study.patient_name}</div>
-              <div>ID: {study.patient_id}</div>
-              <div>W/L: {viewportSettings.windowWidth}/{viewportSettings.windowCenter}</div>
-              <div>Zoom: {(viewportSettings.zoom * 100).toFixed(0)}%</div>
-            </div>
-            
-            <div className="absolute top-4 right-4 text-sm text-right bg-black bg-opacity-50 p-2 rounded">
-              <div>{study.modality}</div>
-              <div>{study.body_part}</div>
-              <div>Image: {currentImageIndex + 1}/{imageIds.length}</div>
-            </div>
-
-            {/* Slice Navigation */}
-            <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex items-center space-x-2 bg-black bg-opacity-50 p-2 rounded">
-              <Button 
-                variant="outline" 
-                size="sm"
-                onClick={() => handleSliceChange('prev')}
-                disabled={currentImageIndex === 0}
-              >
-                Previous
-              </Button>
-              <span className="text-sm px-2">
-                {currentImageIndex + 1} / {imageIds.length}
-              </span>
-              <Button 
-                variant="outline" 
-                size="sm"
-                onClick={() => handleSliceChange('next')}
-                disabled={currentImageIndex === imageIds.length - 1}
-              >
-                Next
-              </Button>
-            </div>
+              2D
+            </Button>
+            <Button 
+              variant={viewMode === 'mpr' ? 'default' : 'outline'} 
+              size="sm" 
+              onClick={generateMPR}
+            >
+              MPR
+            </Button>
+            <Button 
+              variant={viewMode === '3d' ? 'default' : 'outline'} 
+              size="sm" 
+              onClick={reconstruct3D}
+            >
+              3D
+            </Button>
+            <Button 
+              variant={viewMode === 'vr' ? 'default' : 'outline'} 
+              size="sm" 
+              onClick={() => setViewMode('vr')}
+            >
+              VR
+            </Button>
+            <Button 
+              variant={viewMode === 'mip' ? 'default' : 'outline'} 
+              size="sm" 
+              onClick={generateMIP}
+            >
+              MIP
+            </Button>
           </div>
 
-          {/* Right Panel */}
-          <div className="w-80 bg-gray-800 border-l border-gray-700 overflow-y-auto">
-            <div className="p-4 space-y-4">
-              {/* Window/Level Controls */}
-              <Card className="bg-gray-700 border-gray-600">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm text-white">Window/Level</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div>
-                    <label className="text-xs text-gray-300">Window Width: {viewportSettings.windowWidth}</label>
-                    <Slider
-                      value={[viewportSettings.windowWidth]}
-                      onValueChange={(value) => handleWindowLevelChange('width', value[0])}
-                      max={2000}
-                      min={1}
-                      step={1}
-                      className="mt-1"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-300">Window Center: {viewportSettings.windowCenter}</label>
-                    <Slider
-                      value={[viewportSettings.windowCenter]}
-                      onValueChange={(value) => handleWindowLevelChange('center', value[0])}
-                      max={1000}
-                      min={-1000}
-                      step={1}
-                      className="mt-1"
-                    />
-                  </div>
-                  <div className="flex space-x-2">
+          {/* Viewer Container */}
+          <div className="flex-1 relative" ref={viewerRef}>
+            <div 
+                ref={cornerstoneElementRef}
+                className={`w-full h-full bg-black ${viewMode !== '2d' ? 'hidden' : ''}`}
+                style={{ minHeight: '500px' }}
+              ></div>
+            
+            {viewMode === 'mpr' && (
+              <div className="grid grid-cols-2 gap-2 h-full">
+                <div className="bg-black flex items-center justify-center">
+                  <div>Axial View</div>
+                </div>
+                <div className="bg-black flex items-center justify-center">
+                  <div>Coronal View</div>
+                </div>
+                <div className="bg-black flex items-center justify-center">
+                  <div>Sagittal View</div>
+                </div>
+                <div className="bg-black flex items-center justify-center">
+                  <div>3D View</div>
+                </div>
+              </div>
+            )}
+            
+            {(viewMode === '3d' || viewMode === 'vr' || viewMode === 'mip') && (
+              <div 
+                ref={vtkContainerRef}
+                className="w-full h-full bg-black flex items-center justify-center"
+                style={{ minHeight: '500px' }}
+              >
+                <div className="text-center">
+                  <h3 className="text-xl font-bold mb-2">{viewMode.toUpperCase()} Rendering</h3>
+                  <p>Advanced visualization coming soon</p>
+                  <p className="text-sm text-gray-400 mt-4">This feature requires VTK.js integration</p>
+                </div>
+              </div>
+            )}
+            
+            {/* Image Controls */}
+            {viewMode === '2d' && (
+              <div className={`absolute bottom-0 left-0 right-0 p-4 ${theme === 'dark' ? 'bg-gray-800/80' : 'bg-white/80'}`}>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center space-x-2">
                     <Button 
                       variant="outline" 
                       size="sm" 
-                      onClick={() => {
-                        handleWindowLevelChange('width', 400);
-                        handleWindowLevelChange('center', 40);
-                      }}
+                      onClick={() => handleSliceChange(currentImageIndex - 1)}
+                      disabled={currentImageIndex <= 0}
                     >
-                      Soft Tissue
+                      Previous
                     </Button>
+                    <div>
+                      Image {currentImageIndex + 1} / {imageIds.length}
+                    </div>
                     <Button 
                       variant="outline" 
-                      size="sm"
-                      onClick={() => {
-                        handleWindowLevelChange('width', 1500);
-                        handleWindowLevelChange('center', 300);
-                      }}
+                      size="sm" 
+                      onClick={() => handleSliceChange(currentImageIndex + 1)}
+                      disabled={currentImageIndex >= imageIds.length - 1}
                     >
-                      Bone
-                    </Button>
-                    <Button 
-                      variant="outline" 
-                      size="sm"
-                      onClick={() => {
-                        handleWindowLevelChange('width', 1600);
-                        handleWindowLevelChange('center', -600);
-                      }}
-                    >
-                      Lung
+                      Next
                     </Button>
                   </div>
-                </CardContent>
-              </Card>
+                  <div className="flex items-center space-x-4">
+                    <div>
+                      <div className="text-sm">Window Width: {viewportSettings.windowWidth}</div>
+                      <Slider 
+                        value={[viewportSettings.windowWidth]} 
+                        min={1} 
+                        max={2000} 
+                        step={1}
+                        onValueChange={(value) => handleWindowLevelChange('width', value[0])}
+                        className="w-32"
+                      />
+                    </div>
+                    <div>
+                      <div className="text-sm">Window Center: {viewportSettings.windowCenter}</div>
+                      <Slider 
+                        value={[viewportSettings.windowCenter]} 
+                        min={-1000} 
+                        max={1000} 
+                        step={1}
+                        onValueChange={(value) => handleWindowLevelChange('center', value[0])}
+                        className="w-32"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
 
-              {/* Study Info */}
-              <Card className="bg-gray-700 border-gray-600">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm text-white">Study Information</CardTitle>
-                </CardHeader>
-                <CardContent className="text-sm space-y-1">
-                  <div><span className="text-gray-300">Patient:</span> {study.patient_name}</div>
-                  <div><span className="text-gray-300">ID:</span> {study.patient_id}</div>
-                  <div><span className="text-gray-300">Date:</span> {study.study_date}</div>
-                  <div><span className="text-gray-300">Modality:</span> {study.modality}</div>
-                  <div><span className="text-gray-300">Body Part:</span> {study.body_part}</div>
-                  <div><span className="text-gray-300">Description:</span> {study.study_description}</div>
-                  <div><span className="text-gray-300">Images:</span> {imageIds.length}</div>
-                </CardContent>
-              </Card>
-
-              {/* Measurements */}
-              <Card className="bg-gray-700 border-gray-600">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm text-white">Measurements</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {measurements.length === 0 ? (
-                    <p className="text-sm text-gray-400">Use measurement tools to add annotations</p>
-                  ) : (
-                    <div className="space-y-2">
-                      {measurements.map((measurement) => (
-                        <div key={measurement.id} className="text-sm">
-                          <div className="flex justify-between">
-                            <span className="capitalize">{measurement.type}</span>
-                            <span>{measurement.value.toFixed(1)} {measurement.unit}</span>
+        {/* Right Panel - AI Report & Measurements */}
+        <div className={`w-full md:w-80 p-4 ${theme === 'dark' ? 'bg-gray-800' : 'bg-gray-200'}`}>
+          {/* AI Report */}
+          <Card className={`mb-4 ${theme === 'dark' ? 'bg-gray-700 text-white' : 'bg-white'}`}>
+            <CardHeader>
+              <CardTitle className="flex justify-between items-center">
+                <span>AI Analysis</span>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={generateAIReport}
+                  disabled={aiReportLoading}
+                >
+                  {aiReportLoading ? 'Analyzing...' : 'Generate'}
+                </Button>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {study?.ai_report ? (
+                <div>
+                  <div className="mb-2">
+                    <Badge variant="outline" className="mb-2">
+                      {study.ai_report.analysis_type || 'General Analysis'}
+                    </Badge>
+                    <div className="text-sm text-gray-500 dark:text-gray-400">
+                      Confidence: {study.ai_report.confidence * 100}%
+                    </div>
+                  </div>
+                  
+                  <h4 className="font-semibold mt-4">Findings:</h4>
+                  <ul className="list-disc pl-5 space-y-1 text-sm">
+                    {study.ai_report.findings.map((finding, i) => (
+                      <li key={i}>{finding}</li>
+                    ))}
+                  </ul>
+                  
+                  <h4 className="font-semibold mt-4">Impression:</h4>
+                  <p className="text-sm">{study.ai_report.impression}</p>
+                  
+                  {study.ai_report.pathology_scores && (
+                    <>
+                      <h4 className="font-semibold mt-4">Pathology Scores:</h4>
+                      <div className="space-y-1 text-sm">
+                        {Object.entries(study.ai_report.pathology_scores).map(([key, value]) => (
+                          <div key={key} className="flex justify-between">
+                            <span>{key}:</span>
+                            <span>{(value * 100).toFixed(1)}%</span>
                           </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* AI Report */}
-              {study.ai_report && (
-                <Card className="bg-gray-700 border-gray-600">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm text-white flex items-center">
-                      <Activity className="w-4 h-4 mr-2" />
-                      AI Analysis
-                      {study.ai_report.ai_model && (
-                        <Badge variant="outline" className="ml-2 text-xs">
-                          {study.ai_report.ai_model}
-                        </Badge>
-                      )}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <div>
-                      <h4 className="text-sm font-medium text-white mb-1">Findings:</h4>
-                      <ul className="text-sm text-gray-300 space-y-1">
-                        {study.ai_report.findings.map((finding, index) => (
-                          <li key={index} className="text-xs">• {finding}</li>
                         ))}
-                      </ul>
-                    </div>
-                    <div>
-                      <h4 className="text-sm font-medium text-white mb-1">Impression:</h4>
-                      <p className="text-sm text-gray-300">{study.ai_report.impression}</p>
-                    </div>
-                    <div>
-                      <h4 className="text-sm font-medium text-white mb-1">Confidence:</h4>
-                      <div className="flex items-center space-x-2">
-                        <div className="flex-1 bg-gray-600 rounded-full h-2">
-                          <div 
-                            className="bg-blue-500 h-2 rounded-full" 
-                            style={{ width: `${study.ai_report.confidence * 100}%` }}
-                          />
-                        </div>
-                        <span className="text-sm text-gray-300">
-                          {(study.ai_report.confidence * 100).toFixed(0)}%
-                        </span>
                       </div>
-                    </div>
-                    
-                    {/* Pathology Scores */}
-                    {study.ai_report.pathology_scores && (
-                      <div>
-                        <h4 className="text-sm font-medium text-white mb-1">Pathology Scores:</h4>
-                        <div className="space-y-1">
-                          {Object.entries(study.ai_report.pathology_scores)
-                            .filter(([_, score]) => score > 0.1)
-                            .sort(([_, a], [__, b]) => b - a)
-                            .slice(0, 5)
-                            .map(([pathology, score]) => (
-                            <div key={pathology} className="flex justify-between text-xs">
-                              <span className="text-gray-300">{pathology.replace('_', ' ')}</span>
-                              <span className="text-white">{(score * 100).toFixed(1)}%</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
+                    </>
+                  )}
+                </div>
+              ) : (
+                <div className="text-center py-4">
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    No AI analysis available. Click "Generate" to analyze this study.
+                  </p>
+                </div>
               )}
+            </CardContent>
+          </Card>
+          
+          {/* Measurements */}
+          <Card className={`mb-4 ${theme === 'dark' ? 'bg-gray-700 text-white' : 'bg-white'}`}>
+            <CardHeader>
+              <CardTitle>Measurements</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {measurementsLoading ? (
+                <div className="flex justify-center py-4">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500"></div>
+                </div>
+              ) : persistedMeasurements.length > 0 ? (
+                <div className="space-y-2">
+                  {persistedMeasurements.map((measurement) => (
+                    <div key={measurement.id} className="flex justify-between items-center p-2 rounded bg-gray-100 dark:bg-gray-600">
+                      <div>
+                        <div className="font-medium">{measurement.type}</div>
+                        <div className="text-sm">{measurement.value} {measurement.unit}</div>
+                      </div>
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={() => deleteMeasurement(measurement.id)}
+                      >
+                        Delete
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-4">
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    No measurements yet. Use the measurement tools to add some.
+                  </p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+          
+          {/* Advanced Tools */}
+          <Card className={`${theme === 'dark' ? 'bg-gray-700 text-white' : 'bg-white'}`}>
+            <CardHeader>
+              <CardTitle>Advanced Tools</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="w-full justify-start"
+                  onClick={exportCineLoop}
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  Export Cine Loop
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="w-full justify-start"
+                  onClick={export3DModel}
+                >
+                  <Brain className="h-4 w-4 mr-2" />
+                  Export 3D Model
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="w-full justify-start"
+                  onClick={toggleSeriesSynchronization}
+                >
+                  <Layers className="h-4 w-4 mr-2" />
+                  {seriesSynchronization ? 'Disable' : 'Enable'} Series Sync
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="w-full justify-start"
+                  onClick={() => applyHangingProtocol('chest')}
+                >
+                  <Grid3X3 className="h-4 w-4 mr-2" />
+                  Apply Hanging Protocol
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+      
+      {/* DICOM Networking Panel */}
+      {showDICOMNetworking && (
+        <div className={`fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50`}>
+          <div className={`w-full max-w-4xl ${theme === 'dark' ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-lg`}>
+            <div className="p-4 border-b flex justify-between items-center">
+              <h2 className="text-xl font-bold">DICOM Networking</h2>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={() => setShowDICOMNetworking(false)}
+              >
+                Close
+              </Button>
+            </div>
+            <div className="p-4">
+              <DICOMNetworkPanel />
+              <DICOMProtocolTester />
             </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

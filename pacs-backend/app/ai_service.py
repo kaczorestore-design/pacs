@@ -5,12 +5,41 @@ import random
 import logging
 from datetime import datetime
 import os
-import torch
-from PIL import Image
-import pydicom
-from pydicom.pixel_data_handlers.util import apply_voi_lut
-import cv2
-from transformers import AutoTokenizer, AutoModel
+try:
+    import torch
+    TORCH_AVAILABLE = True
+except ImportError:
+    TORCH_AVAILABLE = False
+    torch = None
+
+try:
+    from PIL import Image
+    PIL_AVAILABLE = True
+except ImportError:
+    PIL_AVAILABLE = False
+    Image = None
+
+try:
+    import pydicom
+    from pydicom.pixel_data_handlers.util import apply_voi_lut
+    PYDICOM_AVAILABLE = True
+except ImportError:
+    PYDICOM_AVAILABLE = False
+    pydicom = None
+try:
+    import cv2
+    CV2_AVAILABLE = True
+except ImportError:
+    CV2_AVAILABLE = False
+    cv2 = None
+
+try:
+    from transformers import AutoTokenizer, AutoModel
+    TRANSFORMERS_AVAILABLE = True
+except ImportError:
+    TRANSFORMERS_AVAILABLE = False
+    AutoTokenizer = None
+    AutoModel = None
 import warnings
 
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -24,8 +53,14 @@ class RealAIService:
     """
     
     def __init__(self):
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        logger.info(f"AI Service initialized on device: {self.device}")
+        self.lightweight_mode = os.getenv('LIGHTWEIGHT_AI', 'false').lower() == 'true'
+        
+        if TORCH_AVAILABLE and not self.lightweight_mode:
+            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            logger.info(f"AI Service initialized on device: {self.device}")
+        else:
+            self.device = "cpu"
+            logger.info("AI Service initialized in lightweight mode")
         
         self._xrv_model = None
         self._monai_models = {}
@@ -52,7 +87,7 @@ class RealAIService:
     @property
     def xrv_model(self):
         """Lazy loading of TorchXRayVision model"""
-        if self._xrv_model is None:
+        if self._xrv_model is None and not self.lightweight_mode:
             try:
                 import torchxrayvision as xrv
                 logger.info("Loading TorchXRayVision DenseNet model...")
@@ -68,7 +103,7 @@ class RealAIService:
     @property
     def text_model(self):
         """Lazy loading of text generation model for reports"""
-        if self._text_model is None:
+        if self._text_model is None and not self.lightweight_mode and TRANSFORMERS_AVAILABLE:
             try:
                 logger.info("Loading text generation model...")
                 self._tokenizer = AutoTokenizer.from_pretrained("microsoft/DialoGPT-medium")
@@ -80,7 +115,7 @@ class RealAIService:
                 self._text_model = None
         return self._text_model
     
-    def preprocess_dicom_for_xray(self, dicom_path: str) -> Optional[torch.Tensor]:
+    def preprocess_dicom_for_xray(self, dicom_path: str) -> Optional[any]:
         """Preprocess DICOM file for chest X-ray analysis"""
         try:
             ds = pydicom.dcmread(dicom_path)
