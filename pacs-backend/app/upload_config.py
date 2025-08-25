@@ -4,7 +4,7 @@ Upload configuration for large DICOM file handling
 
 MAX_UPLOAD_SIZE = 10 * 1024 * 1024 * 1024  # 10GB
 
-MAX_FILES_PER_BATCH = 1000
+# MAX_FILES_PER_BATCH = None  # Removed restriction
 
 ALLOWED_EXTENSIONS = {'.dcm', '.dicom', '.DCM', '.DICOM'}
 
@@ -22,10 +22,8 @@ def validate_upload_file(file, max_size=MAX_UPLOAD_SIZE):
     
     return True
 
-def validate_batch_upload(files, max_files=MAX_FILES_PER_BATCH, max_total_size=MAX_UPLOAD_SIZE):
-    """Validate batch upload constraints"""
-    if len(files) > max_files:
-        raise ValueError(f"Too many files. Maximum {max_files} files per batch")
+def validate_batch_upload(files, max_total_size=MAX_UPLOAD_SIZE):
+    """Validate batch upload constraints - no file count limit, only total size"""
     
     total_size = sum(file.size for file in files if hasattr(file, 'size'))
     if total_size > max_total_size:
