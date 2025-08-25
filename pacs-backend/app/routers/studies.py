@@ -110,6 +110,9 @@ async def upload_study(
     db.commit()
     db.refresh(study)
     
+    from ..celery_app import process_dicom_study_async
+    process_dicom_study_async.delay(study.id)
+    
     return study
 
 @router.get("/", response_model=List[schemas.Study])
