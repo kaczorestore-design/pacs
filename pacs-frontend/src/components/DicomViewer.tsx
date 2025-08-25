@@ -32,6 +32,9 @@ import {
 import * as cornerstone from 'cornerstone-core';
 import * as cornerstoneTools from 'cornerstone-tools';
 import * as cornerstoneWADOImageLoader from 'cornerstone-wado-image-loader';
+import * as dicomParser from 'dicom-parser';
+import * as Hammer from 'hammerjs';
+import * as cornerstoneMath from 'cornerstone-math';
 
 
 interface Study {
@@ -114,26 +117,56 @@ export default function DicomViewer() {
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
   useEffect(() => {
+    console.log('🔍 DicomViewer useEffect triggered, viewMode:', viewMode, 'isInitialized:', isInitialized);
+    console.log('🔍 cornerstoneElementRef.current:', cornerstoneElementRef.current);
+    console.log('🔍 Available modules:', {
+      cornerstone: typeof cornerstone,
+      cornerstoneTools: typeof cornerstoneTools,
+      cornerstoneWADOImageLoader: typeof cornerstoneWADOImageLoader,
+      dicomParser: typeof dicomParser
+    });
+
     const initializeCornerstone = async () => {
       try {
-        if (!cornerstoneElementRef.current) return;
+        if (!cornerstoneElementRef.current) {
+          console.log('❌ cornerstoneElementRef.current is null, skipping initialization');
+          return;
+        }
 
-        cornerstone.enable(cornerstoneElementRef.current);
+        console.log('🔧 Initializing Cornerstone.js...');
         
         cornerstoneWADOImageLoader.external.cornerstone = cornerstone;
-        if (window.dicomParser) {
-          cornerstoneWADOImageLoader.external.dicomParser = window.dicomParser;
-        }
+        cornerstoneWADOImageLoader.external.dicomParser = dicomParser;
         
+        cornerstoneWADOImageLoader.configure({
+          beforeSend: function(xhr: XMLHttpRequest) {
+            if (token) {
+              xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+            }
+          },
+          useWebWorkers: true,
+          webWorkerPath: '/cornerstoneWADOImageLoaderWebWorker.js',
+          taskConfiguration: {
+            'decodeTask': {
+              loadCodecsOnStartup: true,
+              initializeCodecsOnStartup: false,
+              codecsPath: '/cornerstoneWADOImageLoaderCodecs.js',
+              usePDFJS: false,
+              strict: false
+            }
+          }
+        });
+
         cornerstoneTools.external.cornerstone = cornerstone;
-        if (window.Hammer) {
-          cornerstoneTools.external.Hammer = window.Hammer;
-        }
-        if (window.cornerstoneMath) {
-          cornerstoneTools.external.cornerstoneMath = window.cornerstoneMath;
-        }
         
-        cornerstoneTools.init();
+        cornerstoneTools.init({
+          mouseEnabled: true,
+          touchEnabled: true,
+          globalToolSyncEnabled: false,
+          showSVGCursors: true
+        });
+        
+        cornerstone.enable(cornerstoneElementRef.current);
         
         const LengthTool = cornerstoneTools.LengthTool;
         const AngleTool = cornerstoneTools.AngleTool;
@@ -158,16 +191,28 @@ export default function DicomViewer() {
         cornerstoneTools.setToolActive('Zoom', { mouseButtonMask: 2 });
         cornerstoneTools.setToolActive('StackScrollMouseWheel', {});
         
+        (window as any).cornerstone = cornerstone;
+        (window as any).cornerstoneTools = cornerstoneTools;
+        (window as any).cornerstoneWADOImageLoader = cornerstoneWADOImageLoader;
+        
         setIsInitialized(true);
+        console.log('✅ Cornerstone initialized successfully');
+        console.log('📊 Available tools:', cornerstoneTools.store.state.tools);
         
       } catch (err) {
-        console.error('Failed to initialize Cornerstone:', err);
+        console.error('❌ Failed to initialize Cornerstone:', err);
         setError('Failed to initialize DICOM viewer');
       }
     };
 
     if (cornerstoneElementRef.current && !isInitialized) {
+      console.log('✅ Conditions met for initialization, calling initializeCornerstone()');
       initializeCornerstone();
+    } else {
+      console.log('❌ Initialization conditions not met:', {
+        hasElement: !!cornerstoneElementRef.current,
+        isInitialized: isInitialized
+      });
     }
 
     return () => {
@@ -179,7 +224,100 @@ export default function DicomViewer() {
         }
       }
     };
-  }, [isInitialized]);
+  }, [isInitialized, viewMode]);
+
+  useEffect(() => {
+    console.log('🔍 Cornerstone element watcher - viewMode:', viewMode, 'element available:', !!cornerstoneElementRef.current);
+    
+    if (viewMode === '2d' && cornerstoneElementRef.current && !isInitialized) {
+      console.log('✅ Cornerstone element is now available, triggering initialization...');
+      
+      const timer = setTimeout(() => {
+        if (cornerstoneElementRef.current && !isInitialized) {
+          console.log('🔄 Forcing cornerstone initialization after element became available');
+          const initializeCornerstone = async () => {
+            try {
+              console.log('🔧 Direct Cornerstone initialization...');
+              
+              cornerstoneWADOImageLoader.external.cornerstone = cornerstone;
+              cornerstoneWADOImageLoader.external.dicomParser = dicomParser;
+              
+              cornerstoneWADOImageLoader.configure({
+                beforeSend: function(xhr: XMLHttpRequest) {
+                  const token = localStorage.getItem('token');
+                  if (token) {
+                    xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+                  }
+                },
+                useWebWorkers: true,
+                webWorkerPath: '/cornerstoneWADOImageLoaderWebWorker.js',
+                taskConfiguration: {
+                  'decodeTask': {
+                    loadCodecsOnStartup: true,
+                    initializeCodecsOnStartup: false,
+                    codecsPath: '/cornerstoneWADOImageLoaderCodecs.js',
+                    usePDFJS: false,
+                    strict: false
+                  }
+                }
+              });
+
+              cornerstoneTools.external.cornerstone = cornerstone;
+              cornerstoneTools.external.Hammer = Hammer;
+              cornerstoneTools.external.cornerstoneMath = cornerstoneMath;
+              
+              cornerstoneTools.init({
+                mouseEnabled: true,
+                touchEnabled: true,
+                globalToolSyncEnabled: false,
+                showSVGCursors: true
+              });
+              
+              cornerstone.enable(cornerstoneElementRef.current);
+              
+              const LengthTool = cornerstoneTools.LengthTool;
+              const AngleTool = cornerstoneTools.AngleTool;
+              const RectangleRoiTool = cornerstoneTools.RectangleRoiTool;
+              const EllipticalRoiTool = cornerstoneTools.EllipticalRoiTool;
+              const WwwcTool = cornerstoneTools.WwwcTool;
+              const PanTool = cornerstoneTools.PanTool;
+              const ZoomTool = cornerstoneTools.ZoomTool;
+              const StackScrollMouseWheelTool = cornerstoneTools.StackScrollMouseWheelTool;
+              
+              cornerstoneTools.addTool(LengthTool);
+              cornerstoneTools.addTool(AngleTool);
+              cornerstoneTools.addTool(RectangleRoiTool);
+              cornerstoneTools.addTool(EllipticalRoiTool);
+              cornerstoneTools.addTool(WwwcTool);
+              cornerstoneTools.addTool(PanTool);
+              cornerstoneTools.addTool(ZoomTool);
+              cornerstoneTools.addTool(StackScrollMouseWheelTool);
+              
+              cornerstoneTools.setToolActive('Wwwc', { mouseButtonMask: 1 });
+              cornerstoneTools.setToolActive('Pan', { mouseButtonMask: 4 });
+              cornerstoneTools.setToolActive('Zoom', { mouseButtonMask: 2 });
+              cornerstoneTools.setToolActive('StackScrollMouseWheel', {});
+              
+              (window as any).cornerstone = cornerstone;
+              (window as any).cornerstoneTools = cornerstoneTools;
+              (window as any).cornerstoneWADOImageLoader = cornerstoneWADOImageLoader;
+              
+              setIsInitialized(true);
+              console.log('✅ Direct Cornerstone initialization successful');
+              
+            } catch (err) {
+              console.error('❌ Direct Cornerstone initialization failed:', err);
+              setError('Failed to initialize DICOM viewer');
+            }
+          };
+          
+          initializeCornerstone();
+        }
+      }, 200);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [cornerstoneElementRef.current, viewMode, isInitialized]);
 
   useEffect(() => {
     const fetchStudy = async () => {
@@ -195,10 +333,10 @@ export default function DicomViewer() {
           setStudy(studyData);
           
           if (studyData.dicom_files && studyData.dicom_files.length > 0) {
-            const mockImageIds = studyData.dicom_files.map((file: any) => 
-              `wadouri:${API_URL}/api/dicom/files/${file.id}`
+            const imageIds = studyData.dicom_files.map((file: any) => 
+              `wadouri:${API_URL}/api/studies/dicom/files/${file.id}`
             );
-            setImageIds(mockImageIds);
+            setImageIds(imageIds);
           } else {
             const mockImageIds = Array.from({ length: 120 }, (_, i) => 
               `example://image-${i + 1}`
@@ -236,72 +374,89 @@ export default function DicomViewer() {
     if (!cornerstoneElementRef.current || imageIndex >= imageIds.length) return;
     
     try {
-      const canvas = document.createElement('canvas');
-      canvas.width = 512;
-      canvas.height = 512;
-      const ctx = canvas.getContext('2d')!;
+      const imageId = imageIds[imageIndex];
       
-      const imageData = ctx.createImageData(512, 512);
-      for (let i = 0; i < imageData.data.length; i += 4) {
-        const x = (i / 4) % 512;
-        const y = Math.floor((i / 4) / 512);
-        const centerX = 256;
-        const centerY = 256;
-        const distance = Math.sqrt((x - centerX) ** 2 + (y - centerY) ** 2);
+      if (imageId.startsWith('wadouri:')) {
+        console.log('🔄 Loading real DICOM image:', imageId);
+        const image = await cornerstone.loadImage(imageId);
+        console.log('✅ DICOM image loaded successfully:', image.width, 'x', image.height);
+        cornerstone.displayImage(cornerstoneElementRef.current, image);
         
-        let intensity = 0;
-        if (study?.modality === 'CR' || study?.modality === 'DX') {
-          intensity = Math.max(0, 200 - distance * 0.5 + Math.sin(x * 0.02) * 20 + Math.cos(y * 0.02) * 20);
-          if (distance > 200) intensity = Math.max(intensity * 0.3, 20); // Lung fields
-        } else if (study?.modality === 'CT') {
-          intensity = 128 + Math.sin(distance * 0.02) * 50 + Math.random() * 30;
-        } else if (study?.modality === 'MR') {
-          intensity = 150 + Math.cos(distance * 0.01) * 80 + Math.sin(x * 0.01) * 30;
-        } else {
-          intensity = Math.max(0, 255 - distance + Math.random() * 50);
+        const viewport = cornerstone.getViewport(cornerstoneElementRef.current);
+        cornerstone.setViewport(cornerstoneElementRef.current, {
+          ...viewport,
+          ...viewportSettings
+        });
+      } else {
+        const canvas = document.createElement('canvas');
+        canvas.width = 512;
+        canvas.height = 512;
+        const ctx = canvas.getContext('2d')!;
+        
+        const imageData = ctx.createImageData(512, 512);
+        for (let i = 0; i < imageData.data.length; i += 4) {
+          const x = (i / 4) % 512;
+          const y = Math.floor((i / 4) / 512);
+          const centerX = 256;
+          const centerY = 256;
+          const distance = Math.sqrt((x - centerX) ** 2 + (y - centerY) ** 2);
+          
+          let intensity = 0;
+          if (study?.modality === 'CR' || study?.modality === 'DX') {
+            intensity = Math.max(0, 200 - distance * 0.5 + Math.sin(x * 0.02) * 20 + Math.cos(y * 0.02) * 20);
+            if (distance > 200) intensity = Math.max(intensity * 0.3, 20);
+          } else if (study?.modality === 'CT') {
+            intensity = 128 + Math.sin(distance * 0.02) * 50 + Math.random() * 30;
+          } else if (study?.modality === 'MR') {
+            intensity = 150 + Math.cos(distance * 0.01) * 80 + Math.sin(x * 0.01) * 30;
+          } else {
+            intensity = Math.max(0, 255 - distance + Math.random() * 50);
+          }
+          
+          intensity = Math.max(0, Math.min(255, intensity));
+          
+          imageData.data[i] = intensity;
+          imageData.data[i + 1] = intensity;
+          imageData.data[i + 2] = intensity;
+          imageData.data[i + 3] = 255;
         }
         
-        intensity = Math.max(0, Math.min(255, intensity));
+        ctx.putImageData(imageData, 0, 0);
         
-        imageData.data[i] = intensity;     // R
-        imageData.data[i + 1] = intensity; // G
-        imageData.data[i + 2] = intensity; // B
-        imageData.data[i + 3] = 255;       // A
+        const mockImage = {
+          imageId: imageIds[imageIndex],
+          minPixelValue: 0,
+          maxPixelValue: 255,
+          slope: 1,
+          intercept: 0,
+          windowCenter: viewportSettings.windowCenter,
+          windowWidth: viewportSettings.windowWidth,
+          render: cornerstone.renderGrayscaleImage,
+          getPixelData: () => imageData.data,
+          rows: 512,
+          columns: 512,
+          height: 512,
+          width: 512,
+          color: false,
+          columnPixelSpacing: 1,
+          rowPixelSpacing: 1,
+          invert: false,
+          sizeInBytes: 512 * 512
+        };
+        
+        cornerstone.displayImage(cornerstoneElementRef.current, mockImage);
+        
+        const viewport = cornerstone.getViewport(cornerstoneElementRef.current);
+        cornerstone.setViewport(cornerstoneElementRef.current, {
+          ...viewport,
+          ...viewportSettings
+        });
       }
       
-      ctx.putImageData(imageData, 0, 0);
-      
-      const mockImage = {
-        imageId: imageIds[imageIndex],
-        minPixelValue: 0,
-        maxPixelValue: 255,
-        slope: 1,
-        intercept: 0,
-        windowCenter: viewportSettings.windowCenter,
-        windowWidth: viewportSettings.windowWidth,
-        render: cornerstone.renderGrayscaleImage,
-        getPixelData: () => imageData.data,
-        rows: 512,
-        columns: 512,
-        height: 512,
-        width: 512,
-        color: false,
-        columnPixelSpacing: 1,
-        rowPixelSpacing: 1,
-        invert: false,
-        sizeInBytes: 512 * 512
-      };
-      
-      cornerstone.displayImage(cornerstoneElementRef.current, mockImage);
-      
-      const viewport = cornerstone.getViewport(cornerstoneElementRef.current);
-      cornerstone.setViewport(cornerstoneElementRef.current, {
-        ...viewport,
-        ...viewportSettings
-      });
-      
     } catch (err) {
-      console.error('Failed to load image:', err);
+      console.error('❌ Failed to load image:', err);
+      console.error('Image ID that failed:', imageIds[imageIndex]);
+      setError('Failed to load DICOM image');
     }
   };
 

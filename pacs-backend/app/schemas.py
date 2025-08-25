@@ -44,10 +44,14 @@ class DiagnosticCenterUpdate(BaseModel):
     phone: Optional[str] = None
     email: Optional[EmailStr] = None
     is_active: Optional[bool] = None
+    storage_quota_gb: Optional[int] = None
+    storage_used_gb: Optional[int] = None
 
 class DiagnosticCenter(DiagnosticCenterBase):
     id: int
     is_active: bool
+    storage_quota_gb: Optional[int] = None
+    storage_used_gb: Optional[int] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
     
@@ -199,3 +203,25 @@ class AIAnalysisResponse(BaseModel):
     analysis_results: AIReport
     processing_time: float
     timestamp: datetime
+
+class DeletionRequestBase(BaseModel):
+    study_id: int
+    reason: str
+
+class DeletionRequestCreate(DeletionRequestBase):
+    pass
+
+class DeletionRequestUpdate(BaseModel):
+    status: str
+    approved_by_id: Optional[int] = None
+
+class DeletionRequest(DeletionRequestBase):
+    id: int
+    requested_by_id: int
+    status: str
+    approved_by_id: Optional[int] = None
+    approved_at: Optional[datetime] = None
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True

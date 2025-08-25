@@ -9,5 +9,22 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  define: {
+    global: 'globalThis',
+  },
+  optimizeDeps: {
+    include: [
+      'cornerstone-core',
+      'cornerstone-tools', 
+      'cornerstone-wado-image-loader',
+      'dicom-parser'
+    ],
+    exclude: []
+  },
+  build: {
+    commonjsOptions: {
+      include: [/cornerstone/, /dicom-parser/, /node_modules/]
+    }
+  }
 })
 
