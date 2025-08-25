@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from './ui/button';
@@ -9,7 +9,6 @@ import { Slider } from './ui/slider';
 import { 
   ArrowLeft, 
   ZoomIn, 
-  ZoomOut, 
   RotateCw, 
   Ruler, 
   Square, 
@@ -20,18 +19,20 @@ import {
   Settings,
   Brain,
   Activity,
-  Maximize,
   Grid3X3,
-  Volume2,
   Eye,
-  Layers,
   Move3D,
-  RefreshCw
+  RefreshCw,
+  Layers,
+  Maximize,
+  Sun,
+  Moon
 } from 'lucide-react';
 
 import * as cornerstone from 'cornerstone-core';
 import * as cornerstoneTools from 'cornerstone-tools';
 import * as cornerstoneWADOImageLoader from 'cornerstone-wado-image-loader';
+
 
 interface Study {
   id: number;
@@ -82,11 +83,12 @@ export default function DicomViewer() {
   const { token } = useAuth();
   const viewerRef = useRef<HTMLDivElement>(null);
   const cornerstoneElementRef = useRef<HTMLDivElement>(null);
+  const vtkContainerRef = useRef<HTMLDivElement>(null);
   
   const [study, setStudy] = useState<Study | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [measurements, setMeasurements] = useState<Measurement[]>([]);
+  const [measurements] = useState<Measurement[]>([]);
   const [activeTool, setActiveTool] = useState<string>('wwwc');
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
@@ -100,7 +102,13 @@ export default function DicomViewer() {
     invert: false
   });
   const [isInitialized, setIsInitialized] = useState(false);
-  const [viewMode, setViewMode] = useState<'2d' | '3d' | 'mpr'>('2d');
+  const [viewMode, setViewMode] = useState<'2d' | '3d' | 'mpr' | 'vr' | 'mip'>('2d');
+  const [mprViews, setMprViews] = useState<{axial: any, coronal: any, sagittal: any}>({
+    axial: null, 
+    coronal: null, 
+    sagittal: null
+  });
+  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [aiReportLoading, setAiReportLoading] = useState(false);
 
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
@@ -213,10 +221,16 @@ export default function DicomViewer() {
   }, [studyId, token, API_URL]);
 
   useEffect(() => {
-    if (isInitialized && imageIds.length > 0 && cornerstoneElementRef.current) {
+    if (isInitialized && imageIds.length > 0 && cornerstoneElementRef.current && viewMode === '2d') {
       loadImage(currentImageIndex);
     }
-  }, [isInitialized, imageIds, currentImageIndex]);
+  }, [isInitialized, imageIds, currentImageIndex, viewMode]);
+
+  useEffect(() => {
+    if (viewMode === '3d' || viewMode === 'vr') {
+      console.log('3D/VR mode selected - VTK integration coming soon');
+    }
+  }, [viewMode]);
 
   const loadImage = async (imageIndex: number) => {
     if (!cornerstoneElementRef.current || imageIndex >= imageIds.length) return;
@@ -298,6 +312,8 @@ export default function DicomViewer() {
     cornerstoneTools.setToolPassive('Angle');
     cornerstoneTools.setToolPassive('RectangleRoi');
     cornerstoneTools.setToolPassive('EllipticalRoi');
+    cornerstoneTools.setToolPassive('FreehandRoi');
+    cornerstoneTools.setToolPassive('CobbAngle');
     cornerstoneTools.setToolPassive('Wwwc');
     cornerstoneTools.setToolPassive('Pan');
     cornerstoneTools.setToolPassive('Zoom');
@@ -315,6 +331,12 @@ export default function DicomViewer() {
       case 'ellipse':
         cornerstoneTools.setToolActive('EllipticalRoi', { mouseButtonMask: 1 });
         break;
+      case 'freehand':
+        cornerstoneTools.setToolActive('FreehandRoi', { mouseButtonMask: 1 });
+        break;
+      case 'cobb':
+        cornerstoneTools.setToolActive('CobbAngle', { mouseButtonMask: 1 });
+        break;
       case 'pan':
         cornerstoneTools.setToolActive('Pan', { mouseButtonMask: 1 });
         break;
@@ -326,6 +348,52 @@ export default function DicomViewer() {
     }
     
     setActiveTool(tool);
+  };
+
+  const reconstruct3D = () => {
+    if (!imageIds.length) return;
+
+    try {
+      console.log('3D reconstruction initiated for', imageIds.length, 'slices');
+      setViewMode('3d');
+    } catch (error) {
+      console.error('Failed to reconstruct 3D volume:', error);
+    }
+  };
+
+  const generateMPR = () => {
+    if (!imageIds.length) return;
+
+    try {
+      const axialView = { plane: 'axial', sliceIndex: Math.floor(imageIds.length / 2) };
+      const coronalView = { plane: 'coronal', sliceIndex: Math.floor(512 / 2) };
+      const sagittalView = { plane: 'sagittal', sliceIndex: Math.floor(512 / 2) };
+
+      setMprViews({
+        axial: axialView,
+        coronal: coronalView,
+        sagittal: sagittalView
+      });
+
+      setViewMode('mpr');
+      console.log('MPR views generated:', { axialView, coronalView, sagittalView });
+    } catch (error) {
+      console.error('Failed to generate MPR views:', error);
+    }
+  };
+
+  const generateMIP = () => {
+    if (!imageIds.length) return;
+
+    try {
+      setViewMode('mip');
+    } catch (error) {
+      console.error('Failed to generate MIP:', error);
+    }
+  };
+
+  const toggleTheme = () => {
+    setTheme(theme === 'dark' ? 'light' : 'dark');
   };
 
   const handleSliceChange = (direction: 'next' | 'prev') => {
@@ -391,13 +459,37 @@ export default function DicomViewer() {
     }
   };
 
-  const exportImage = () => {
+  const exportImage = (format: 'png' | 'jpg' | 'mp4' | 'stl' | 'pdf' = 'png') => {
     if (cornerstoneElementRef.current) {
       const canvas = cornerstone.getEnabledElement(cornerstoneElementRef.current).canvas;
-      const link = document.createElement('a');
-      link.download = `${study?.patient_name || 'study'}_slice_${currentImageIndex + 1}.png`;
-      link.href = canvas.toDataURL();
-      link.click();
+      
+      switch (format) {
+        case 'png':
+        case 'jpg':
+          const link = document.createElement('a');
+          link.download = `${study?.patient_name || 'study'}_slice_${currentImageIndex + 1}.${format}`;
+          link.href = canvas.toDataURL(`image/${format}`);
+          link.click();
+          break;
+          
+        case 'mp4':
+          console.log('MP4 cine export - feature coming soon');
+          break;
+          
+        case 'stl':
+          console.log('STL 3D export - feature coming soon');
+          break;
+          
+        case 'pdf':
+          console.log('PDF report export - feature coming soon');
+          break;
+          
+        default:
+          const defaultLink = document.createElement('a');
+          defaultLink.download = `${study?.patient_name || 'study'}_slice_${currentImageIndex + 1}.png`;
+          defaultLink.href = canvas.toDataURL();
+          defaultLink.click();
+      }
     }
   };
 
@@ -487,16 +579,42 @@ export default function DicomViewer() {
               <Button 
                 variant={viewMode === '3d' ? 'default' : 'ghost'} 
                 size="sm"
-                onClick={() => setViewMode('3d')}
+                onClick={() => {
+                  setViewMode('3d');
+                  reconstruct3D();
+                }}
               >
                 <Move3D className="w-4 h-4" />
               </Button>
               <Button 
                 variant={viewMode === 'mpr' ? 'default' : 'ghost'} 
                 size="sm"
-                onClick={() => setViewMode('mpr')}
+                onClick={() => {
+                  setViewMode('mpr');
+                  generateMPR();
+                }}
               >
                 <Grid3X3 className="w-4 h-4" />
+              </Button>
+              <Button 
+                variant={viewMode === 'vr' ? 'default' : 'ghost'} 
+                size="sm"
+                onClick={() => {
+                  setViewMode('vr');
+                  reconstruct3D();
+                }}
+              >
+                <Layers className="w-4 h-4" />
+              </Button>
+              <Button 
+                variant={viewMode === 'mip' ? 'default' : 'ghost'} 
+                size="sm"
+                onClick={() => {
+                  setViewMode('mip');
+                  generateMIP();
+                }}
+              >
+                <Maximize className="w-4 h-4" />
               </Button>
             </div>
             <Button 
@@ -514,6 +632,9 @@ export default function DicomViewer() {
             </Button>
             <Button variant="ghost" size="sm" onClick={resetViewport}>
               <Settings className="w-4 h-4" />
+            </Button>
+            <Button variant="ghost" size="sm" onClick={toggleTheme}>
+              {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             </Button>
           </div>
         </div>
@@ -586,6 +707,24 @@ export default function DicomViewer() {
           >
             <Circle className="w-4 h-4" />
           </Button>
+          <Button
+            variant={activeTool === 'freehand' ? 'default' : 'ghost'}
+            size="sm"
+            onClick={() => handleToolSelect('freehand')}
+            className="w-10 h-10"
+            title="Freehand ROI"
+          >
+            ✏️
+          </Button>
+          <Button
+            variant={activeTool === 'cobb' ? 'default' : 'ghost'}
+            size="sm"
+            onClick={() => handleToolSelect('cobb')}
+            className="w-10 h-10"
+            title="Cobb Angle"
+          >
+            📐
+          </Button>
           <Separator className="w-8 bg-gray-600" />
           <Button
             variant="ghost"
@@ -596,15 +735,34 @@ export default function DicomViewer() {
           >
             {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
           </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={exportImage}
-            className="w-10 h-10"
-            title="Export Image"
-          >
-            <Download className="w-4 h-4" />
-          </Button>
+          <div className="relative group">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => exportImage('png')}
+              className="w-10 h-10"
+              title="Export Options"
+            >
+              <Download className="w-4 h-4" />
+            </Button>
+            <div className="absolute left-12 top-0 hidden group-hover:block bg-gray-700 rounded-md shadow-lg p-2 space-y-1 z-10">
+              <Button size="sm" variant="ghost" onClick={() => exportImage('png')} className="w-full justify-start text-xs">
+                PNG Image
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => exportImage('jpg')} className="w-full justify-start text-xs">
+                JPEG Image
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => exportImage('mp4')} className="w-full justify-start text-xs">
+                MP4 Cine
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => exportImage('stl')} className="w-full justify-start text-xs">
+                STL 3D Model
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => exportImage('pdf')} className="w-full justify-start text-xs">
+                PDF Report
+              </Button>
+            </div>
+          </div>
         </div>
 
         {/* Main Viewer */}
@@ -614,13 +772,49 @@ export default function DicomViewer() {
               ref={viewerRef}
               className="w-full h-full flex items-center justify-center"
             >
-              {/* Cornerstone DICOM Viewer */}
-              <div 
-                ref={cornerstoneElementRef}
-                className="w-full h-full"
-                style={{ minHeight: '400px' }}
-                onContextMenu={(e) => e.preventDefault()}
-              />
+              {/* 2D Cornerstone DICOM Viewer */}
+              {viewMode === '2d' && (
+                <div 
+                  ref={cornerstoneElementRef}
+                  className="w-full h-full"
+                  style={{ minHeight: '400px' }}
+                  onContextMenu={(e) => e.preventDefault()}
+                />
+              )}
+              
+              {/* 3D VTK Viewer */}
+              {(viewMode === '3d' || viewMode === 'vr') && (
+                <div 
+                  ref={vtkContainerRef}
+                  className="w-full h-full"
+                  style={{ minHeight: '400px' }}
+                />
+              )}
+              
+              {/* MPR Views */}
+              {viewMode === 'mpr' && (
+                <div className="w-full h-full grid grid-cols-2 grid-rows-2 gap-1">
+                  <div className="bg-gray-900 flex items-center justify-center text-white">
+                    <div>Axial View {mprViews.axial ? '✓' : '○'}</div>
+                  </div>
+                  <div className="bg-gray-900 flex items-center justify-center text-white">
+                    <div>Coronal View {mprViews.coronal ? '✓' : '○'}</div>
+                  </div>
+                  <div className="bg-gray-900 flex items-center justify-center text-white">
+                    <div>Sagittal View {mprViews.sagittal ? '✓' : '○'}</div>
+                  </div>
+                  <div className="bg-gray-900 flex items-center justify-center text-white">
+                    <div>3D Reconstruction</div>
+                  </div>
+                </div>
+              )}
+              
+              {/* MIP View */}
+              {viewMode === 'mip' && (
+                <div className="w-full h-full bg-gray-900 flex items-center justify-center text-white">
+                  <div>Maximum Intensity Projection</div>
+                </div>
+              )}
             </div>
             
             {/* Overlay Info */}

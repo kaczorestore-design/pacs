@@ -130,7 +130,7 @@ async def get_studies(
             (Study.assigned_doctor_id == current_user.id)
         )
     elif current_user.role == UserRole.RADIOLOGIST:
-        query = query.filter(Study.radiologist_id == current_user.id)
+        query = query.filter(Study.diagnostic_center_id == current_user.diagnostic_center_id)
     elif current_user.role in [UserRole.DIAGNOSTIC_CENTER_ADMIN]:
         query = query.filter(Study.diagnostic_center_id == current_user.diagnostic_center_id)
     
@@ -154,7 +154,7 @@ async def get_study(
     if current_user.role == UserRole.ADMIN:
         has_access = True
     elif current_user.role == UserRole.RADIOLOGIST:
-        has_access = study.radiologist_id == current_user.id
+        has_access = study.diagnostic_center_id == current_user.diagnostic_center_id
     elif current_user.role in [UserRole.DOCTOR, UserRole.TECHNICIAN, UserRole.DIAGNOSTIC_CENTER_ADMIN]:
         has_access = study.diagnostic_center_id == current_user.diagnostic_center_id
     

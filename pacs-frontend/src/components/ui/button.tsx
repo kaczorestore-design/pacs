@@ -5,20 +5,20 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@/lib/utils"
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-950 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 dark:focus-visible:ring-zinc-300",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-medical-primary disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 dark:focus-visible:ring-medical-secondary",
   {
     variants: {
       variant: {
         default:
-          "bg-zinc-900 text-zinc-50 shadow hover:bg-zinc-900/90 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-50/90",
+          "bg-medical-primary text-white shadow hover:bg-medical-primary/90 focus-visible:ring-medical-primary dark:bg-medical-secondary dark:hover:bg-medical-secondary/90",
         destructive:
-          "bg-red-500 text-zinc-50 shadow-sm hover:bg-red-500/90 dark:bg-red-900 dark:text-zinc-50 dark:hover:bg-red-900/90",
+          "bg-medical-error text-white shadow-sm hover:bg-medical-error/90 dark:bg-medical-error dark:hover:bg-medical-error/90",
         outline:
-          "border border-zinc-200 bg-white shadow-sm hover:bg-zinc-100 hover:text-zinc-900 dark:border-zinc-800 dark:bg-zinc-950 dark:hover:bg-zinc-800 dark:hover:text-zinc-50",
+          "border border-medical-gray-300 bg-white shadow-sm hover:bg-medical-gray-50 hover:text-medical-gray-900 dark:border-medical-gray-600 dark:bg-medical-gray-800 dark:hover:bg-medical-gray-700 dark:hover:text-white",
         secondary:
-          "bg-zinc-100 text-zinc-900 shadow-sm hover:bg-zinc-100/80 dark:bg-zinc-800 dark:text-zinc-50 dark:hover:bg-zinc-800/80",
-        ghost: "hover:bg-zinc-100 hover:text-zinc-900 dark:hover:bg-zinc-800 dark:hover:text-zinc-50",
-        link: "text-zinc-900 underline-offset-4 hover:underline dark:text-zinc-50",
+          "bg-medical-gray-100 text-medical-gray-900 shadow-sm hover:bg-medical-gray-200 dark:bg-medical-gray-700 dark:text-white dark:hover:bg-medical-gray-600",
+        ghost: "hover:bg-medical-gray-100 hover:text-medical-gray-900 dark:hover:bg-medical-gray-700 dark:hover:text-white",
+        link: "text-medical-primary underline-offset-4 hover:underline dark:text-medical-secondary",
       },
       size: {
         default: "h-9 px-4 py-2",
