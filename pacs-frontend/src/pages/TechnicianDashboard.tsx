@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
 import { Button } from '../components/ui/button'
@@ -24,6 +25,7 @@ interface Study {
 
 export default function TechnicianDashboard() {
   const { user, token, logout } = useAuth()
+  const navigate = useNavigate()
   const [studies, setStudies] = useState<Study[]>([])
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('overview')
@@ -63,20 +65,20 @@ export default function TechnicianDashboard() {
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
+        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-medical-primary"></div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-medical-gray-50">
       {/* Header */}
-      <div className="bg-white shadow-sm border-b">
+      <div className="bg-white shadow-sm border-b border-medical-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-6">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">Technician Dashboard</h1>
-              <p className="text-gray-600">Welcome back, {user?.full_name}</p>
+              <h1 className="text-2xl font-bold text-medical-gray-900">Technician Dashboard</h1>
+              <p className="text-medical-gray-600">Welcome back, {user?.full_name}</p>
             </div>
             <div className="flex space-x-4">
               <Button>
@@ -94,7 +96,7 @@ export default function TechnicianDashboard() {
 
       {/* Navigation Tabs */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        <div className="flex space-x-8 border-b border-gray-200 mb-6">
+        <div className="flex space-x-8 border-b border-medical-gray-200 mb-6">
           {[
             { id: 'overview', label: 'Overview', icon: Activity },
             { id: 'studies', label: 'Studies', icon: FileText },
@@ -105,8 +107,8 @@ export default function TechnicianDashboard() {
               onClick={() => setActiveTab(tab.id)}
               className={`flex items-center px-1 py-4 border-b-2 font-medium text-sm ${
                 activeTab === tab.id
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  ? 'border-medical-primary text-medical-primary'
+                  : 'border-transparent text-medical-gray-500 hover:text-medical-gray-700 hover:border-medical-gray-300'
               }`}
             >
               <tab.icon className="h-5 w-5 mr-2" />
@@ -186,16 +188,16 @@ export default function TechnicianDashboard() {
                           <p className="font-medium">
                             {study.patient.first_name} {study.patient.last_name}
                           </p>
-                          <p className="text-sm text-gray-500">
+                          <p className="text-sm text-medical-gray-500">
                             {study.modality} - {study.body_part}
                           </p>
                         </div>
                         <div className={`px-2 py-1 rounded-full text-xs ${
                           study.status === 'completed'
-                            ? 'bg-green-100 text-green-800'
+                            ? 'bg-medical-success/10 text-medical-success'
                             : study.status === 'in_progress'
-                            ? 'bg-yellow-100 text-yellow-800'
-                            : 'bg-gray-100 text-gray-800'
+                            ? 'bg-medical-warning/10 text-medical-warning'
+                            : 'bg-medical-gray-100 text-medical-gray-800'
                         }`}>
                           {study.status.replace('_', ' ')}
                         </div>
@@ -261,21 +263,21 @@ export default function TechnicianDashboard() {
 
               <div className="overflow-x-auto">
                 <table className="w-full">
-                  <thead className="bg-gray-50">
+                  <thead className="bg-medical-gray-50">
                     <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-6 py-3 text-left text-xs font-medium text-medical-gray-500 uppercase tracking-wider">
                         Patient
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-6 py-3 text-left text-xs font-medium text-medical-gray-500 uppercase tracking-wider">
                         Study
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-6 py-3 text-left text-xs font-medium text-medical-gray-500 uppercase tracking-wider">
                         Status
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-6 py-3 text-left text-xs font-medium text-medical-gray-500 uppercase tracking-wider">
                         Date
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-6 py-3 text-left text-xs font-medium text-medical-gray-500 uppercase tracking-wider">
                         Actions
                       </th>
                     </tr>
@@ -285,34 +287,34 @@ export default function TechnicianDashboard() {
                       <tr key={study.id}>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div>
-                            <div className="text-sm font-medium text-gray-900">
+                            <div className="text-sm font-medium text-medical-gray-900">
                               {study.patient.first_name} {study.patient.last_name}
                             </div>
-                            <div className="text-sm text-gray-500">
+                            <div className="text-sm text-medical-gray-500">
                               ID: {study.patient.patient_id}
                             </div>
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm text-gray-900">{study.modality}</div>
-                          <div className="text-sm text-gray-500">{study.body_part}</div>
+                          <div className="text-sm text-medical-gray-900">{study.modality}</div>
+                          <div className="text-sm text-medical-gray-500">{study.body_part}</div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
                             study.status === 'completed'
-                              ? 'bg-green-100 text-green-800'
+                              ? 'bg-medical-success/10 text-medical-success'
                               : study.status === 'in_progress'
-                              ? 'bg-yellow-100 text-yellow-800'
-                              : 'bg-gray-100 text-gray-800'
+                              ? 'bg-medical-warning/10 text-medical-warning'
+                              : 'bg-medical-gray-100 text-medical-gray-800'
                           }`}>
                             {study.status.replace('_', ' ')}
                           </span>
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-medical-gray-500">
                           {new Date(study.created_at).toLocaleDateString()}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                          <Button variant="outline" size="sm">
+                          <Button variant="outline" size="sm" onClick={() => navigate(`/viewer/${study.id}`)}>
                             <Eye className="h-4 w-4 mr-1" />
                             View
                           </Button>
@@ -344,10 +346,10 @@ export default function TechnicianDashboard() {
                 <div className="space-y-6">
                   <div className="border-2 border-dashed border-gray-300 rounded-lg p-12 text-center">
                     <Upload className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                    <h3 className="text-lg font-medium text-gray-900 mb-2">
+                    <h3 className="text-lg font-medium text-medical-gray-900 mb-2">
                       Drop DICOM files here
                     </h3>
-                    <p className="text-gray-500 mb-4">
+                    <p className="text-medical-gray-500 mb-4">
                       or click to browse and select files
                     </p>
                     <Button>

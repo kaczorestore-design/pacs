@@ -90,9 +90,9 @@ export default function LoginPage() {
                     onClick={() => setShowPassword(!showPassword)}
                   >
                     {showPassword ? (
-                      <EyeOff className="h-4 w-4 text-gray-500" />
+                      <EyeOff className="h-4 w-4 text-medical-gray-500" />
                     ) : (
-                      <Eye className="h-4 w-4 text-gray-500" />
+                      <Eye className="h-4 w-4 text-medical-gray-500" />
                     )}
                   </button>
                 </div>
@@ -128,15 +128,15 @@ export default function LoginPage() {
               {demoAccounts.map((account, index) => (
                 <div
                   key={index}
-                  className="p-3 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors"
+                  className="p-3 border rounded-lg cursor-pointer hover:bg-medical-gray-50 transition-colors"
                   onClick={() => fillDemoAccount(account.username, account.password)}
                 >
                   <div className="flex justify-between items-center">
                     <div>
                       <p className="font-medium">{account.role}</p>
-                      <p className="text-sm text-gray-600">{account.username}</p>
+                      <p className="text-sm text-medical-gray-600">{account.username}</p>
                     </div>
-                    <div className="text-xs text-gray-500">
+                    <div className="text-xs text-medical-gray-500">
                       Click to use
                     </div>
                   </div>
