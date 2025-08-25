@@ -3,7 +3,15 @@ from app.database import User, DiagnosticCenter, UserRole
 from app.auth import get_password_hash
 
 def init_database():
+    Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
+    
+    print("Database tables created successfully with updated schema")
+    print("New features:")
+    print("- Added QUEUED and PROCESSING status values")
+    print("- Added priority field to Study model")
+    print("- Updated storage quota tracking")
+    print("- Enhanced deletion request workflow")
     
     db = SessionLocal()
     
@@ -39,7 +47,8 @@ def init_database():
                 "username": "radiologist1",
                 "full_name": "Dr. John Radiologist",
                 "password": "radio123",
-                "role": UserRole.RADIOLOGIST
+                "role": UserRole.RADIOLOGIST,
+                "diagnostic_center_id": center.id
             },
             {
                 "email": "doctor@pacs.com", 

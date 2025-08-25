@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
-import { Upload, FileText, Activity, Plus, Search, Eye, LogOut } from 'lucide-react'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '../components/ui/dialog'
+import { Upload, FileText, Activity, Plus, Search, Eye, LogOut, Trash2 } from 'lucide-react'
 
 interface Study {
   id: number
@@ -28,7 +29,23 @@ export default function TechnicianDashboard() {
   const navigate = useNavigate()
   const [studies, setStudies] = useState<Study[]>([])
   const [loading, setLoading] = useState(true)
+  const [deletionReason, setDeletionReason] = useState('')
   const [activeTab, setActiveTab] = useState('overview')
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([])
+  const [uploading, setUploading] = useState(false)
+  const [patientData, setPatientData] = useState({
+    patient_id: '',
+    first_name: '',
+    last_name: '',
+    date_of_birth: ''
+  })
+  const [studyData, setStudyData] = useState({
+    study_description: '',
+    modality: '',
+    body_part: '',
+    study_date: ''
+  })
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const API_URL = 'http://localhost:8000'
 
@@ -60,6 +77,97 @@ export default function TechnicianDashboard() {
     todayStudies: studies.filter(s => 
       new Date(s.created_at).toDateString() === new Date().toDateString()
     ).length,
+  }
+
+  const requestStudyDeletion = async (studyId: number) => {
+    if (!deletionReason.trim()) {
+      alert('Please provide a reason for deletion');
+      return;
+    }
+    
+    try {
+      const response = await fetch(`${API_URL}/studies/deletion-requests`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          study_id: studyId,
+          reason: deletionReason
+        })
+      });
+      
+      if (response.ok) {
+        setDeletionReason('');
+        alert('Deletion request submitted successfully');
+      }
+    } catch (error) {
+      console.error('Error requesting study deletion:', error);
+    }
+  };
+
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files
+    if (files) {
+      setSelectedFiles(Array.from(files))
+    }
+  }
+
+  const handleDragOver = (event: React.DragEvent) => {
+    event.preventDefault()
+  }
+
+  const handleDrop = (event: React.DragEvent) => {
+    event.preventDefault()
+    const files = event.dataTransfer.files
+    if (files) {
+      setSelectedFiles(Array.from(files))
+    }
+  }
+
+  const handleUpload = async () => {
+    if (selectedFiles.length === 0) {
+      alert('Please select DICOM files to upload')
+      return
+    }
+
+    setUploading(true)
+    try {
+      const formData = new FormData()
+      
+      selectedFiles.forEach((file) => {
+        formData.append('files', file)
+      })
+      
+      formData.append('patient_data', JSON.stringify(patientData))
+      formData.append('study_data', JSON.stringify(studyData))
+
+      const response = await fetch(`${API_URL}/studies/upload`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
+        body: formData
+      })
+
+      if (response.ok) {
+        const result = await response.json()
+        alert('Study uploaded successfully!')
+        setSelectedFiles([])
+        setPatientData({ patient_id: '', first_name: '', last_name: '', date_of_birth: '' })
+        setStudyData({ study_description: '', modality: '', body_part: '', study_date: '' })
+        fetchStudies()
+      } else {
+        const error = await response.json()
+        alert(`Upload failed: ${error.detail || 'Unknown error'}`)
+      }
+    } catch (error) {
+      console.error('Error uploading study:', error)
+      alert('Error uploading study')
+    } finally {
+      setUploading(false)
+    }
   }
 
   if (loading) {
@@ -317,24 +425,69 @@ export default function TechnicianDashboard() {
                           <div className="text-sm text-medical-gray-500">{study.body_part}</div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                            study.status === 'completed'
-                              ? 'bg-medical-success/10 text-medical-success'
-                              : study.status === 'in_progress'
-                              ? 'bg-medical-warning/10 text-medical-warning'
-                              : 'bg-medical-gray-100 text-medical-gray-800'
-                          }`}>
-                            {study.status.replace('_', ' ')}
-                          </span>
+                          <div className="space-y-2">
+                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                              study.status === 'completed'
+                                ? 'bg-medical-success/10 text-medical-success'
+                                : study.status === 'processing'
+                                ? 'bg-blue-100 text-blue-700'
+                                : study.status === 'queued'
+                                ? 'bg-yellow-100 text-yellow-700'
+                                : 'bg-medical-gray-100 text-medical-gray-800'
+                            }`}>
+                              {study.status.replace('_', ' ')}
+                            </span>
+                            <div className="flex items-center space-x-1">
+                              {['Uploaded', 'Queued', 'Processing', 'Report Generated'].map((stage, index) => (
+                                <div key={stage} className="flex items-center">
+                                  <div className={`w-2 h-2 rounded-full ${
+                                    index === 0 ? 'bg-green-500' :
+                                    study.status === 'queued' && index === 1 ? 'bg-blue-500' :
+                                    study.status === 'processing' && index <= 2 ? 'bg-blue-500' :
+                                    study.status === 'completed' && index <= 3 ? 'bg-green-500' :
+                                    'bg-gray-300'
+                                  }`}></div>
+                                  {index < 3 && <div className="w-4 h-0.5 bg-gray-300 mx-1"></div>}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-medical-gray-500">
                           {new Date(study.created_at).toLocaleDateString()}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
                           <Button variant="outline" size="sm" onClick={() => navigate(`/viewer/${study.id}`)}>
                             <Eye className="h-4 w-4 mr-1" />
                             View
                           </Button>
+                          <Dialog>
+                            <DialogTrigger asChild>
+                              <Button variant="destructive" size="sm">
+                                <Trash2 className="h-4 w-4 mr-1" />
+                                Request Delete
+                              </Button>
+                            </DialogTrigger>
+                            <DialogContent>
+                              <DialogHeader>
+                                <DialogTitle>Request Study Deletion</DialogTitle>
+                              </DialogHeader>
+                              <div className="space-y-4">
+                                <div>
+                                  <label className="text-sm font-medium">Reason for deletion</label>
+                                  <Input
+                                    placeholder="Enter reason for deletion request..."
+                                    value={deletionReason}
+                                    onChange={(e) => setDeletionReason(e.target.value)}
+                                  />
+                                </div>
+                                <div className="flex justify-end space-x-2">
+                                  <Button variant="outline" onClick={() => setDeletionReason('')}>Cancel</Button>
+                                  <Button onClick={() => requestStudyDeletion(study.id)}>Submit Request</Button>
+                                </div>
+                              </div>
+                            </DialogContent>
+                          </Dialog>
                         </td>
                       </tr>
                     ))}
@@ -361,7 +514,11 @@ export default function TechnicianDashboard() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-6">
-                  <div className="border-2 border-dashed border-blue-300 rounded-xl p-12 text-center bg-gradient-to-br from-blue-50 to-cyan-50 hover:border-blue-400 transition-colors duration-200">
+                  <div 
+                    className="border-2 border-dashed border-blue-300 rounded-xl p-12 text-center bg-gradient-to-br from-blue-50 to-cyan-50 hover:border-blue-400 transition-colors duration-200"
+                    onDragOver={handleDragOver}
+                    onDrop={handleDrop}
+                  >
                     <div className="p-4 bg-blue-100 rounded-full w-fit mx-auto mb-6">
                       <Upload className="h-12 w-12 text-blue-600" />
                     </div>
@@ -371,40 +528,108 @@ export default function TechnicianDashboard() {
                     <p className="text-gray-600 mb-6 max-w-md mx-auto">
                       Drag and drop your DICOM files here, or click to browse and select files from your computer
                     </p>
-                    <Button className="shadow-lg hover:shadow-xl transition-shadow bg-blue-600 hover:bg-blue-700">
+                    <Button 
+                      className="shadow-lg hover:shadow-xl transition-shadow bg-blue-600 hover:bg-blue-700"
+                      onClick={() => fileInputRef.current?.click()}
+                    >
                       <Upload className="h-4 w-4 mr-2" />
                       Select Files
                     </Button>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      multiple
+                      accept=".dcm,.dicom"
+                      onChange={handleFileSelect}
+                      className="hidden"
+                    />
                   </div>
+
+                  {selectedFiles.length > 0 && (
+                    <div className="bg-gray-50 rounded-lg p-4">
+                      <h4 className="font-medium mb-2">Selected Files ({selectedFiles.length})</h4>
+                      <div className="space-y-1 max-h-32 overflow-y-auto">
+                        {selectedFiles.map((file, index) => (
+                          <div key={index} className="text-sm text-gray-600">
+                            {file.name} ({(file.size / 1024 / 1024).toFixed(2)} MB)
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-4">
                       <h4 className="font-medium">Patient Information</h4>
                       <div className="space-y-3">
-                        <Input placeholder="Patient ID" />
-                        <Input placeholder="First Name" />
-                        <Input placeholder="Last Name" />
-                        <Input type="date" placeholder="Date of Birth" />
+                        <Input 
+                          placeholder="Patient ID" 
+                          value={patientData.patient_id}
+                          onChange={(e) => setPatientData({...patientData, patient_id: e.target.value})}
+                        />
+                        <Input 
+                          placeholder="First Name" 
+                          value={patientData.first_name}
+                          onChange={(e) => setPatientData({...patientData, first_name: e.target.value})}
+                        />
+                        <Input 
+                          placeholder="Last Name" 
+                          value={patientData.last_name}
+                          onChange={(e) => setPatientData({...patientData, last_name: e.target.value})}
+                        />
+                        <Input 
+                          type="date" 
+                          placeholder="Date of Birth" 
+                          value={patientData.date_of_birth}
+                          onChange={(e) => setPatientData({...patientData, date_of_birth: e.target.value})}
+                        />
                       </div>
                     </div>
 
                     <div className="space-y-4">
                       <h4 className="font-medium">Study Information</h4>
                       <div className="space-y-3">
-                        <Input placeholder="Study Description" />
-                        <Input placeholder="Modality (CT, MRI, X-Ray, etc.)" />
-                        <Input placeholder="Body Part" />
-                        <Input type="date" placeholder="Study Date" />
+                        <Input 
+                          placeholder="Study Description" 
+                          value={studyData.study_description}
+                          onChange={(e) => setStudyData({...studyData, study_description: e.target.value})}
+                        />
+                        <Input 
+                          placeholder="Modality (CT, MRI, X-Ray, etc.)" 
+                          value={studyData.modality}
+                          onChange={(e) => setStudyData({...studyData, modality: e.target.value})}
+                        />
+                        <Input 
+                          placeholder="Body Part" 
+                          value={studyData.body_part}
+                          onChange={(e) => setStudyData({...studyData, body_part: e.target.value})}
+                        />
+                        <Input 
+                          type="date" 
+                          placeholder="Study Date" 
+                          value={studyData.study_date}
+                          onChange={(e) => setStudyData({...studyData, study_date: e.target.value})}
+                        />
                       </div>
                     </div>
                   </div>
 
                   <div className="flex justify-end space-x-4">
-                    <Button variant="outline">
+                    <Button 
+                      variant="outline"
+                      onClick={() => {
+                        setSelectedFiles([])
+                        setPatientData({ patient_id: '', first_name: '', last_name: '', date_of_birth: '' })
+                        setStudyData({ study_description: '', modality: '', body_part: '', study_date: '' })
+                      }}
+                    >
                       Cancel
                     </Button>
-                    <Button>
-                      Upload Study
+                    <Button 
+                      onClick={handleUpload}
+                      disabled={uploading || selectedFiles.length === 0}
+                    >
+                      {uploading ? 'Uploading...' : 'Upload Study'}
                     </Button>
                   </div>
                 </div>

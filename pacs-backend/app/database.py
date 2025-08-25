@@ -22,6 +22,8 @@ class UserRole(enum.Enum):
     RADIOLOGIST = "radiologist"
 
 class StudyStatus(enum.Enum):
+    QUEUED = "queued"
+    PROCESSING = "processing"
     UPLOADED = "uploaded"
     ASSIGNED = "assigned"
     IN_PROGRESS = "in_progress"
@@ -62,6 +64,8 @@ class DiagnosticCenter(Base):
     phone = Column(String)
     email = Column(String)
     is_active = Column(Boolean, default=True)
+    storage_quota_gb = Column(Integer, default=100)
+    storage_used_gb = Column(Integer, default=0)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
@@ -100,6 +104,7 @@ class Study(Base):
     modality = Column(String)
     body_part = Column(String)
     study_description = Column(Text)
+    priority = Column(String, default="normal")
     status = Column(Enum(StudyStatus), default=StudyStatus.UPLOADED)
     
     ai_report = Column(Text)
@@ -167,6 +172,22 @@ class AuditLog(Base):
     timestamp = Column(DateTime(timezone=True), server_default=func.now())
     
     user = relationship("User")
+
+class DeletionRequest(Base):
+    __tablename__ = "deletion_requests"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    study_id = Column(Integer, ForeignKey("studies.id"), nullable=False)
+    requested_by_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    reason = Column(Text, nullable=False)
+    status = Column(String, default="pending")
+    approved_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    approved_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    study = relationship("Study")
+    requested_by = relationship("User", foreign_keys=[requested_by_id])
+    approved_by = relationship("User", foreign_keys=[approved_by_id])
 
 def get_db():
     db = SessionLocal()

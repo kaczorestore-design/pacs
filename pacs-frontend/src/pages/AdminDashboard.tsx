@@ -3,7 +3,10 @@ import { useAuth } from '../contexts/AuthContext'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
-import { Users, Building2, Activity, Settings, Plus, Search, LogOut } from 'lucide-react'
+import { Switch } from '../components/ui/switch'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '../components/ui/dialog'
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '../components/ui/alert-dialog'
+import { Users, Building2, Activity, Settings, Plus, Search, LogOut, Trash2, HardDrive } from 'lucide-react'
 
 interface DiagnosticCenter {
   id: number
@@ -12,6 +15,8 @@ interface DiagnosticCenter {
   phone: string
   email: string
   is_active: boolean
+  storage_quota_gb?: number
+  storage_used_gb?: number
   created_at: string
 }
 
@@ -30,6 +35,8 @@ export default function AdminDashboard() {
   const { user, token, logout } = useAuth()
   const [centers, setCenters] = useState<DiagnosticCenter[]>([])
   const [users, setUsers] = useState<User[]>([])
+  const [deletionRequests, setDeletionRequests] = useState<any[]>([])
+  const [monitoringData, setMonitoringData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('overview')
 
@@ -37,6 +44,7 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     fetchData()
+    fetchMonitoringData()
   }, [])
 
   const fetchData = async () => {
@@ -55,6 +63,7 @@ export default function AdminDashboard() {
         const usersData = await usersRes.json()
         setCenters(centersData)
         setUsers(usersData)
+        fetchDeletionRequests()
       }
     } catch (error) {
       console.error('Error fetching data:', error)
@@ -62,6 +71,32 @@ export default function AdminDashboard() {
       setLoading(false)
     }
   }
+
+  const fetchDeletionRequests = async () => {
+    try {
+      const response = await fetch(`${API_URL}/studies/deletion-requests`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await response.json();
+      setDeletionRequests(data);
+    } catch (error) {
+      console.error('Error fetching deletion requests:', error);
+    }
+  };
+
+  const fetchMonitoringData = async () => {
+    try {
+      const response = await fetch(`${API_URL}/admin/system-monitoring`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      const data = await response.json();
+      setMonitoringData(data);
+    } catch (error) {
+      console.error('Error fetching monitoring data:', error);
+    }
+  };
 
   const stats = {
     totalCenters: centers.length,
@@ -71,6 +106,93 @@ export default function AdminDashboard() {
     radiologists: users.filter(u => u.role === 'radiologist').length,
     doctors: users.filter(u => u.role === 'doctor').length,
   }
+
+  const toggleCenterStatus = async (centerId: number) => {
+    try {
+      const response = await fetch(`${API_URL}/admin/diagnostic-centers/${centerId}/toggle-status`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (response.ok) {
+        fetchData();
+      }
+    } catch (error) {
+      console.error('Error toggling center status:', error);
+    }
+  };
+
+  const updateSpaceAllocation = async (centerId: number, quotaGb: number) => {
+    try {
+      const response = await fetch(`${API_URL}/admin/diagnostic-centers/${centerId}/space-allocation?quota_gb=${quotaGb}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (response.ok) {
+        fetchData();
+      }
+    } catch (error) {
+      console.error('Error updating space allocation:', error);
+    }
+  };
+
+  const deleteCenter = async (centerId: number) => {
+    try {
+      const response = await fetch(`${API_URL}/admin/diagnostic-centers/${centerId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (response.ok) {
+        fetchData();
+      }
+    } catch (error) {
+      console.error('Error deleting center:', error);
+    }
+  };
+
+  const approveDeletionRequest = async (requestId: number) => {
+    try {
+      const response = await fetch(`${API_URL}/studies/deletion-requests/${requestId}/approve`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (response.ok) {
+        fetchDeletionRequests();
+      }
+    } catch (error) {
+      console.error('Error approving deletion request:', error);
+    }
+  };
+
+  const rejectDeletionRequest = async (requestId: number) => {
+    try {
+      const response = await fetch(`${API_URL}/studies/deletion-requests/${requestId}/reject`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (response.ok) {
+        fetchDeletionRequests();
+      }
+    } catch (error) {
+      console.error('Error rejecting deletion request:', error);
+    }
+  };
 
   if (loading) {
     return (
@@ -114,8 +236,10 @@ export default function AdminDashboard() {
         <div className="flex space-x-1 bg-gray-100 p-1 rounded-xl mb-8">
           {[
             { id: 'overview', label: 'Overview', icon: Activity },
+            { id: 'monitoring', label: 'System Monitoring', icon: Activity },
             { id: 'centers', label: 'Diagnostic Centers', icon: Building2 },
             { id: 'users', label: 'Users', icon: Users },
+            { id: 'deletion-requests', label: 'Deletion Requests', icon: Trash2 },
           ].map((tab) => (
             <button
               key={tab.id}
@@ -255,15 +379,213 @@ export default function AdminDashboard() {
           </div>
         )}
 
+        {/* System Monitoring Tab */}
+        {activeTab === 'monitoring' && monitoringData && (
+          <div className="space-y-6">
+            <div className="flex justify-between items-center">
+              <h2 className="text-xl font-semibold">Real-Time System Monitoring</h2>
+              <Button onClick={fetchMonitoringData} variant="outline">
+                <Activity className="h-4 w-4 mr-2" />
+                Refresh
+              </Button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>CPU Usage</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{monitoringData.system_resources.cpu_percent}%</div>
+                  <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
+                    <div 
+                      className="bg-blue-600 h-2 rounded-full" 
+                      style={{ width: `${monitoringData.system_resources.cpu_percent}%` }}
+                    ></div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Memory Usage</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{monitoringData.system_resources.memory_percent}%</div>
+                  <div className="text-sm text-gray-500">
+                    {monitoringData.system_resources.memory_used_gb}GB / {monitoringData.system_resources.memory_total_gb}GB
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
+                    <div 
+                      className="bg-green-600 h-2 rounded-full" 
+                      style={{ width: `${monitoringData.system_resources.memory_percent}%` }}
+                    ></div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Disk Usage</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{monitoringData.system_resources.disk_percent}%</div>
+                  <div className="text-sm text-gray-500">
+                    {monitoringData.system_resources.disk_used_gb}GB / {monitoringData.system_resources.disk_total_gb}GB
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
+                    <div 
+                      className="bg-yellow-600 h-2 rounded-full" 
+                      style={{ width: `${monitoringData.system_resources.disk_percent}%` }}
+                    ></div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Storage Usage by Center</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {monitoringData.center_storage.map((center: any) => (
+                    <div key={center.center_id} className="flex items-center justify-between p-4 border rounded-lg">
+                      <div>
+                        <div className="font-medium">{center.center_name}</div>
+                        <div className="text-sm text-gray-500">
+                          {center.used_gb}GB / {center.quota_gb}GB ({center.usage_percent}%)
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <div className="w-32 bg-gray-200 rounded-full h-2">
+                          <div 
+                            className={`h-2 rounded-full ${center.usage_percent > 80 ? 'bg-red-600' : center.usage_percent > 60 ? 'bg-yellow-600' : 'bg-green-600'}`}
+                            style={{ width: `${Math.min(center.usage_percent, 100)}%` }}
+                          ></div>
+                        </div>
+                        <span className={`px-2 py-1 rounded-full text-xs ${center.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                          {center.is_active ? 'Active' : 'Inactive'}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>AI Services Status</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {monitoringData.ai_services.map((service: any, index: number) => (
+                    <div key={index} className="flex items-center justify-between p-4 border rounded-lg">
+                      <div>
+                        <div className="font-medium">{service.name}</div>
+                        <div className="text-sm text-gray-500">
+                          Last check: {new Date(service.last_check).toLocaleTimeString()}
+                        </div>
+                      </div>
+                      <span className={`px-2 py-1 rounded-full text-xs ${service.status === 'operational' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                        {service.status}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Database Statistics</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="text-center p-4 border rounded-lg">
+                    <div className="text-2xl font-bold text-blue-600">{monitoringData.database_stats.total_studies}</div>
+                    <div className="text-sm text-gray-500">Total Studies</div>
+                  </div>
+                  <div className="text-center p-4 border rounded-lg">
+                    <div className="text-2xl font-bold text-green-600">{monitoringData.database_stats.total_dicom_files}</div>
+                    <div className="text-sm text-gray-500">DICOM Files</div>
+                  </div>
+                  <div className="text-center p-4 border rounded-lg">
+                    <div className="text-2xl font-bold text-purple-600">{monitoringData.database_stats.recent_studies_24h}</div>
+                    <div className="text-sm text-gray-500">Studies (24h)</div>
+                  </div>
+                  <div className="text-center p-4 border rounded-lg">
+                    <div className="text-2xl font-bold text-orange-600">{monitoringData.database_stats.recent_uploads_24h}</div>
+                    <div className="text-sm text-gray-500">Uploads (24h)</div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Recent System Logs</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2 max-h-64 overflow-y-auto">
+                  {monitoringData.recent_logs.slice(0, 20).map((log: any) => (
+                    <div key={log.id} className="flex items-center justify-between p-2 border-b">
+                      <div className="flex items-center space-x-2">
+                        <span className={`w-2 h-2 rounded-full ${log.level === 'error' ? 'bg-red-500' : log.level === 'warning' ? 'bg-yellow-500' : 'bg-green-500'}`}></span>
+                        <span className="text-sm">{log.action}</span>
+                      </div>
+                      <span className="text-xs text-gray-500">
+                        {new Date(log.timestamp).toLocaleString()}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
         {/* Centers Tab */}
         {activeTab === 'centers' && (
           <div className="space-y-6">
             <div className="flex justify-between items-center">
               <h2 className="text-xl font-semibold">Diagnostic Centers</h2>
-              <Button>
-                <Plus className="h-4 w-4 mr-2" />
-                Add Center
-              </Button>
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Center
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Add New Diagnostic Center</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="text-sm font-medium">Center Name</label>
+                      <Input placeholder="Enter center name..." />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium">Address</label>
+                      <Input placeholder="Enter address..." />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium">Phone</label>
+                      <Input placeholder="Enter phone number..." />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium">Email</label>
+                      <Input placeholder="Enter email..." />
+                    </div>
+                    <div className="flex justify-end space-x-2">
+                      <Button variant="outline">Cancel</Button>
+                      <Button>Add Center</Button>
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
             </div>
 
             <div className="medical-card overflow-hidden">
@@ -322,10 +644,60 @@ export default function AdminDashboard() {
                         <td className="text-gray-500">
                           {new Date(center.created_at).toLocaleDateString()}
                         </td>
-                        <td>
-                          <Button variant="outline" size="sm" className="hover:bg-blue-50 hover:border-blue-500">
-                            Edit
-                          </Button>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
+                          <div className="flex items-center space-x-2">
+                            <Switch
+                              checked={center.is_active}
+                              onCheckedChange={() => toggleCenterStatus(center.id)}
+                            />
+                            <Dialog>
+                              <DialogTrigger asChild>
+                                <Button variant="outline" size="sm">
+                                  <HardDrive className="h-4 w-4 mr-1" />
+                                  Space
+                                </Button>
+                              </DialogTrigger>
+                              <DialogContent>
+                                <DialogHeader>
+                                  <DialogTitle>Manage Space Allocation</DialogTitle>
+                                </DialogHeader>
+                                <div className="space-y-4">
+                                  <div>
+                                    <label className="text-sm font-medium">Storage Quota (GB)</label>
+                                    <Input
+                                      type="number"
+                                      defaultValue={center.storage_quota_gb || 100}
+                                      onBlur={(e) => updateSpaceAllocation(center.id, parseInt(e.target.value))}
+                                    />
+                                  </div>
+                                  <div className="text-sm text-gray-500">
+                                    Used: {center.storage_used_gb || 0} GB / {center.storage_quota_gb || 100} GB
+                                  </div>
+                                </div>
+                              </DialogContent>
+                            </Dialog>
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button variant="destructive" size="sm">
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>Delete Center</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    Are you sure you want to delete this diagnostic center? This action cannot be undone.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                  <AlertDialogAction onClick={() => deleteCenter(center.id)}>
+                                    Delete
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -415,6 +787,79 @@ export default function AdminDashboard() {
                           <Button variant="outline" size="sm">
                             Edit
                           </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Deletion Requests Tab */}
+        {activeTab === 'deletion-requests' && (
+          <div className="space-y-6">
+            <div className="flex justify-between items-center">
+              <h2 className="text-xl font-semibold">Study Deletion Requests</h2>
+            </div>
+
+            <div className="bg-white rounded-lg shadow">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Study
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Requested By
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Reason
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Status
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Actions
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {deletionRequests.map((request) => (
+                      <tr key={request.id}>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                          Study #{request.study_id}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          User #{request.requested_by_id}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-500">
+                          {request.reason}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                            request.status === 'approved'
+                              ? 'bg-green-100 text-green-700'
+                              : request.status === 'rejected'
+                              ? 'bg-red-100 text-red-700'
+                              : 'bg-yellow-100 text-yellow-700'
+                          }`}>
+                            {request.status}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
+                          {request.status === 'pending' && (
+                            <>
+                              <Button size="sm" onClick={() => approveDeletionRequest(request.id)}>
+                                Approve
+                              </Button>
+                              <Button variant="outline" size="sm" onClick={() => rejectDeletionRequest(request.id)}>
+                                Reject
+                              </Button>
+                            </>
+                          )}
                         </td>
                       </tr>
                     ))}
