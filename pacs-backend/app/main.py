@@ -89,12 +89,15 @@ async def get_current_user_info(current_user: User = Depends(get_current_user)):
 async def metrics():
     return get_metrics()
 
-try:
-    dicom_service = DicomNodeConnector()
-    dicom_service.start_scp_server()
-    print("✅ DICOM SCP server started successfully")
-except Exception as e:
-    print(f"⚠️ DICOM service initialization failed: {e}")
+if not os.environ.get('LIGHTWEIGHT_AI', '').lower() == 'true':
+    try:
+        dicom_service = DicomNodeConnector()
+        dicom_service.start_scp_server()
+        print("✅ DICOM SCP server started successfully")
+    except Exception as e:
+        print(f"⚠️ DICOM service initialization failed: {e}")
+else:
+    print("⚠️ DICOM service disabled in lightweight mode")
 
 from .routers import admin, diagnostic_center, studies, ai, mfa, audit, measurements, dicomweb, dimse
 
