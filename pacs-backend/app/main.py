@@ -89,7 +89,7 @@ async def get_current_user_info(current_user: User = Depends(get_current_user)):
 async def metrics():
     return get_metrics()
 
-if not os.environ.get('LIGHTWEIGHT_AI', '').lower() == 'true':
+if os.environ.get('LIGHTWEIGHT_AI', '').lower() != 'true':
     try:
         dicom_service = DicomNodeConnector()
         dicom_service.start_scp_server()
