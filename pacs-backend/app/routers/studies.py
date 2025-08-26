@@ -5,8 +5,18 @@ from typing import List, Optional
 import os
 import uuid
 import shutil
-import pydicom
 from datetime import datetime
+
+if os.environ.get('LIGHTWEIGHT_AI', '').lower() != 'true':
+    try:
+        import pydicom
+        PYDICOM_AVAILABLE = True
+    except ImportError:
+        PYDICOM_AVAILABLE = False
+        pydicom = None
+else:
+    PYDICOM_AVAILABLE = False
+    pydicom = None
 
 from ..database import get_db, User, Study, Patient, DicomFile, UserRole, StudyStatus, DeletionRequest, DiagnosticCenter
 from ..auth import get_current_user
@@ -46,7 +56,7 @@ async def upload_study(
         raise HTTPException(status_code=413, detail=str(e))
     
     extracted_metadata = {}
-    if files and files[0].filename and files[0].filename.lower().endswith('.dcm'):
+    if files and files[0].filename and files[0].filename.lower().endswith('.dcm') and PYDICOM_AVAILABLE:
         try:
             temp_content = await files[0].read()
             await files[0].seek(0)  # Reset file pointer
@@ -72,6 +82,8 @@ async def upload_study(
             
         except Exception as e:
             print(f"Error extracting DICOM metadata: {e}")
+    elif files and files[0].filename and files[0].filename.lower().endswith('.dcm'):
+        print("DICOM metadata extraction skipped - pydicom not available in lightweight mode")
     
     if not patient_id and extracted_metadata.get('patient_id_dicom'):
         patient_id = extracted_metadata['patient_id_dicom']
@@ -156,48 +168,65 @@ async def upload_study(
             with open(file_path, "wb") as buffer:
                 shutil.copyfileobj(file.file, buffer)
             
-            try:
-                ds = pydicom.dcmread(file_path, force=True)
-                
-                if not hasattr(ds, 'file_meta') or not ds.file_meta:
-                    ds.file_meta = pydicom.Dataset()
-                
-                if 'TransferSyntaxUID' not in ds.file_meta:
-                    ds.file_meta.TransferSyntaxUID = pydicom.uid.ExplicitVRLittleEndian
-                if 'MediaStorageSOPClassUID' not in ds.file_meta:
-                    ds.file_meta.MediaStorageSOPClassUID = ds.get('SOPClassUID', '1.2.840.10008.5.1.4.1.1.2')
-                if 'MediaStorageSOPInstanceUID' not in ds.file_meta:
-                    ds.file_meta.MediaStorageSOPInstanceUID = ds.get('SOPInstanceUID', str(uuid.uuid4()))
-                if 'ImplementationClassUID' not in ds.file_meta:
-                    ds.file_meta.ImplementationClassUID = '1.2.840.10008.1.2.1'
-                if 'ImplementationVersionName' not in ds.file_meta:
-                    ds.file_meta.ImplementationVersionName = 'PACS_SYSTEM_1.0'
-                
-                ds.save_as(file_path, write_like_original=False)
-                
+            if PYDICOM_AVAILABLE:
+                try:
+                    ds = pydicom.dcmread(file_path, force=True)
+                    
+                    if not hasattr(ds, 'file_meta') or not ds.file_meta:
+                        ds.file_meta = pydicom.Dataset()
+                    
+                    if 'TransferSyntaxUID' not in ds.file_meta:
+                        ds.file_meta.TransferSyntaxUID = pydicom.uid.ExplicitVRLittleEndian
+                    if 'MediaStorageSOPClassUID' not in ds.file_meta:
+                        ds.file_meta.MediaStorageSOPClassUID = ds.get('SOPClassUID', '1.2.840.10008.5.1.4.1.1.2')
+                    if 'MediaStorageSOPInstanceUID' not in ds.file_meta:
+                        ds.file_meta.MediaStorageSOPInstanceUID = ds.get('SOPInstanceUID', str(uuid.uuid4()))
+                    if 'ImplementationClassUID' not in ds.file_meta:
+                        ds.file_meta.ImplementationClassUID = '1.2.840.10008.1.2.1'
+                    if 'ImplementationVersionName' not in ds.file_meta:
+                        ds.file_meta.ImplementationVersionName = 'PACS_SYSTEM_1.0'
+                    
+                    ds.save_as(file_path, write_like_original=False)
+                    
+                    dicom_file = DicomFile(
+                        study_id=study.id,
+                        series_uid=str(ds.get('SeriesInstanceUID', '')),
+                        instance_uid=str(ds.get('SOPInstanceUID', '')),
+                        file_path=file_path,
+                        file_size=os.path.getsize(file_path),
+                        slice_number=int(ds.get('InstanceNumber', 0)) if ds.get('InstanceNumber') else None,
+                        patient_name=str(ds.get('PatientName', '')),
+                        patient_id_dicom=str(ds.get('PatientID', '')),
+                        study_date_dicom=str(ds.get('StudyDate', '')),
+                        modality_dicom=str(ds.get('Modality', '')),
+                        body_part_dicom=str(ds.get('BodyPartExamined', ''))
+                    )
+                    
+                    if not study.modality:
+                        study.modality = dicom_file.modality_dicom
+                    if not study.body_part:
+                        study.body_part = dicom_file.body_part_dicom
+                    
+                    db.add(dicom_file)
+                    
+                except Exception as e:
+                    print(f"Error processing DICOM file {file.filename}: {e}")
+            else:
                 dicom_file = DicomFile(
                     study_id=study.id,
-                    series_uid=str(ds.get('SeriesInstanceUID', '')),
-                    instance_uid=str(ds.get('SOPInstanceUID', '')),
+                    series_uid=f"series_{uuid.uuid4()}",
+                    instance_uid=f"instance_{uuid.uuid4()}",
                     file_path=file_path,
                     file_size=os.path.getsize(file_path),
-                    slice_number=int(ds.get('InstanceNumber', 0)) if ds.get('InstanceNumber') else None,
-                    patient_name=str(ds.get('PatientName', '')),
-                    patient_id_dicom=str(ds.get('PatientID', '')),
-                    study_date_dicom=str(ds.get('StudyDate', '')),
-                    modality_dicom=str(ds.get('Modality', '')),
-                    body_part_dicom=str(ds.get('BodyPartExamined', ''))
+                    slice_number=None,
+                    patient_name="",
+                    patient_id_dicom="",
+                    study_date_dicom="",
+                    modality_dicom="",
+                    body_part_dicom=""
                 )
-                
-                if not study.modality:
-                    study.modality = dicom_file.modality_dicom
-                if not study.body_part:
-                    study.body_part = dicom_file.body_part_dicom
-                
                 db.add(dicom_file)
-                
-            except Exception as e:
-                print(f"Error processing DICOM file {file.filename}: {e}")
+                print(f"DICOM file {file.filename} uploaded in lightweight mode (no metadata extraction)")
     
     db.commit()
     db.refresh(study)

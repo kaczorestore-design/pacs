@@ -1,11 +1,16 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List, Dict, Any
+import os
 
 from ..database import get_db, User, Study, UserRole
 from ..auth import get_current_user
-from ..ai_service import ai_service
 from .. import schemas
+
+if os.environ.get('LIGHTWEIGHT_AI', '').lower() != 'true':
+    from ..ai_service import ai_service
+else:
+    ai_service = None
 
 router = APIRouter(prefix="/ai", tags=["ai"])
 
@@ -32,11 +37,19 @@ async def generate_ai_report(
     if not has_access:
         raise HTTPException(status_code=403, detail="Access denied")
     
-    ai_report = ai_service.generate_report(
-        modality=study.modality or "Unknown",
-        body_part=study.body_part or "Unknown",
-        study_description=study.study_description or ""
-    )
+    if ai_service is None:
+        ai_report = {
+            "findings": ["AI analysis not available in lightweight mode"],
+            "impression": "Manual review required",
+            "confidence": 0.0,
+            "analysis_type": "lightweight_mode"
+        }
+    else:
+        ai_report = ai_service.generate_report(
+            modality=study.modality or "Unknown",
+            body_part=study.body_part or "Unknown",
+            study_description=study.study_description or ""
+        )
     
     study.ai_report = str(ai_report)
     db.commit()
@@ -90,7 +103,10 @@ async def analyze_measurements(
     if current_user.role not in [UserRole.DOCTOR, UserRole.RADIOLOGIST]:
         raise HTTPException(status_code=403, detail="Only doctors and radiologists can analyze measurements")
     
-    analysis = ai_service.analyze_measurements(measurements)
+    if ai_service is None:
+        analysis = {"message": "AI analysis not available in lightweight mode"}
+    else:
+        analysis = ai_service.analyze_measurements(measurements)
     
     return {
         "message": "Measurements analyzed successfully",
@@ -134,12 +150,23 @@ async def analyze_study(
         dicom_file = db.query(DicomFile).filter(DicomFile.study_id == study_id).first()
         dicom_path = dicom_file.file_path if dicom_file else None
         
-        ai_report = ai_service.generate_report(
-            modality=modality,
-            body_part=body_part,
-            study_description=study.study_description or "",
-            dicom_path=dicom_path
-        )
+        if ai_service is None:
+            ai_report = {
+                "findings": ["AI analysis not available in lightweight mode"],
+                "impression": "Manual review required",
+                "confidence": 0.0,
+                "pathology_scores": {},
+                "abnormal_findings": [],
+                "ai_model": "lightweight_mode",
+                "analysis_type": "lightweight_mode"
+            }
+        else:
+            ai_report = ai_service.generate_report(
+                modality=modality,
+                body_part=body_part,
+                study_description=study.study_description or "",
+                dicom_path=dicom_path
+            )
         
         processing_time = time.time() - start_time
         
