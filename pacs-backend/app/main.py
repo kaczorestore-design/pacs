@@ -24,7 +24,6 @@ from .database import (
     UserRole, StudyStatus
 )
 from .monitoring import get_metrics
-from .dicom_service import DicomNodeConnector
 
 Base.metadata.create_all(bind=engine)
 
@@ -91,6 +90,7 @@ async def metrics():
 
 if os.environ.get('LIGHTWEIGHT_AI', '').lower() != 'true':
     try:
+        from .dicom_service import DicomNodeConnector
         dicom_service = DicomNodeConnector()
         dicom_service.start_scp_server()
         print("✅ DICOM SCP server started successfully")
@@ -99,7 +99,7 @@ if os.environ.get('LIGHTWEIGHT_AI', '').lower() != 'true':
 else:
     print("⚠️ DICOM service disabled in lightweight mode")
 
-from .routers import admin, diagnostic_center, studies, ai, mfa, audit, measurements, dicomweb, dimse
+from .routers import admin, diagnostic_center, studies, ai, mfa, audit, measurements
 
 app.include_router(admin.router)
 app.include_router(diagnostic_center.router)
@@ -108,7 +108,17 @@ app.include_router(ai.router)
 app.include_router(mfa.router)
 app.include_router(audit.router)
 app.include_router(measurements.router, tags=["measurements"])
-app.include_router(dicomweb.router, prefix="/dicomweb", tags=["dicomweb"])
-app.include_router(dimse.router, prefix="/dimse", tags=["dimse"])
+
+if os.environ.get('LIGHTWEIGHT_AI', '').lower() != 'true':
+    try:
+        from .routers import dicomweb, dimse
+        app.include_router(dicomweb.router, prefix="/dicomweb", tags=["dicomweb"])
+        app.include_router(dimse.router, prefix="/dimse", tags=["dimse"])
+        print("✅ DICOM networking routers loaded")
+    except Exception as e:
+        print(f"⚠️ DICOM networking routers failed to load: {e}")
+else:
+    print("⚠️ DICOM networking routers disabled in lightweight mode")
+
 app.include_router(studies.router, prefix="/api")
 app.include_router(ai.router, prefix="/api")
