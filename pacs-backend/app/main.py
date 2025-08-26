@@ -7,7 +7,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from typing import List, Optional
-import os
 import uuid
 import shutil
 from datetime import timedelta
@@ -109,6 +108,9 @@ app.include_router(mfa.router)
 app.include_router(audit.router)
 app.include_router(measurements.router, tags=["measurements"])
 
+app.include_router(studies.router, prefix="/api")
+app.include_router(ai.router, prefix="/api")
+
 if os.environ.get('LIGHTWEIGHT_AI', '').lower() != 'true':
     try:
         from .routers import dicomweb, dimse
@@ -119,6 +121,3 @@ if os.environ.get('LIGHTWEIGHT_AI', '').lower() != 'true':
         print(f"⚠️ DICOM networking routers failed to load: {e}")
 else:
     print("⚠️ DICOM networking routers disabled in lightweight mode")
-
-app.include_router(studies.router, prefix="/api")
-app.include_router(ai.router, prefix="/api")
